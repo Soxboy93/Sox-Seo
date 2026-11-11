@@ -173,6 +173,36 @@ class Sox_SEO_Meta {
 	}
 
 	/**
+	 * Language of a post on a multilingual site (Polylang or WPML), as an
+	 * English name Claude can be told to write in. Empty on a single-language
+	 * site.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return string
+	 */
+	public static function post_language( $post_id ) {
+		$locale = '';
+		if ( function_exists( 'pll_get_post_language' ) ) {
+			$locale = (string) pll_get_post_language( $post_id, 'locale' );
+		} elseif ( defined( 'ICL_SITEPRESS_VERSION' ) ) {
+			$details = apply_filters( 'wpml_post_language_details', null, $post_id );
+			$locale  = is_array( $details ) && ! empty( $details['locale'] ) ? (string) $details['locale'] : '';
+		}
+		if ( '' === $locale ) {
+			return '';
+		}
+		if ( class_exists( 'Locale' ) ) {
+			$name = Locale::getDisplayLanguage( $locale, 'en' );
+			if ( $name && $name !== $locale ) {
+				return $name;
+			}
+		}
+		$names = array( 'ar' => 'Arabic', 'en' => 'English', 'fr' => 'French', 'de' => 'German', 'es' => 'Spanish', 'tr' => 'Turkish', 'it' => 'Italian', 'ru' => 'Russian' );
+		$code  = strtolower( substr( $locale, 0, 2 ) );
+		return isset( $names[ $code ] ) ? $names[ $code ] : $locale;
+	}
+
+	/**
 	 * WooCommerce cart, checkout and account pages. They are kept out of
 	 * search, so they need no SEO copy and should not be linked to.
 	 *

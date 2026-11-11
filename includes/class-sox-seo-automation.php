@@ -18,6 +18,7 @@ class Sox_SEO_Automation {
 		add_action( 'transition_post_status', array( __CLASS__, 'on_publish' ), 10, 3 );
 		add_action( 'sox_seo_generate_meta', array( __CLASS__, 'generate_meta' ) );
 		add_action( self::CRON_HOOK, array( __CLASS__, 'autopilot' ) );
+		add_filter( 'posts_where', array( __CLASS__, 'where_empty_excerpt' ), 10, 2 );
 
 		// Keep the schedule in step with the setting.
 		$scheduled = wp_next_scheduled( self::CRON_HOOK );
@@ -103,9 +104,71 @@ class Sox_SEO_Automation {
 	}
 
 	/**
+	 * Query args for published products with no short description.
+	 *
+	 * @param int   $limit   Max IDs.
+	 * @param int[] $exclude IDs to skip.
+	 * @return array
+	 */
+	private static function products_without_copy_args( $limit, array $exclude = array() ) {
+		return array(
+			'post_type'              => 'product',
+			'post_status'            => 'publish',
+			'posts_per_page'         => $limit,
+			'fields'                 => 'ids',
+			'post__not_in'           => $exclude, // phpcs:ignore WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_post__not_in
+			'orderby'                => 'ID',
+			'order'                  => 'DESC',
+			'sox_seo_empty_excerpt'  => true,
+			'suppress_filters'       => false,
+		);
+	}
+
+	/**
+	 * Restrict a query to posts with an empty excerpt.
+	 *
+	 * @param string   $where SQL WHERE clause.
+	 * @param WP_Query $query Query.
+	 * @return string
+	 */
+	public static function where_empty_excerpt( $where, $query ) {
+		global $wpdb;
+		if ( $query->get( 'sox_seo_empty_excerpt' ) ) {
+			$where .= " AND {$wpdb->posts}.post_excerpt = ''";
+		}
+		return $where;
+	}
+
+	/**
+	 * @param int   $limit   Max IDs.
+	 * @param int[] $exclude IDs to skip.
+	 * @return int[]
+	 */
+	public static function products_without_copy( $limit = 1, array $exclude = array() ) {
+		$query = new WP_Query( self::products_without_copy_args( $limit, $exclude ) );
+		return array_map( 'intval', $query->posts );
+	}
+
+	/**
+	 * Write the short description of a product that has none. The full
+	 * description is left alone in bulk runs.
+	 *
+	 * @param int $post_id Product ID.
+	 * @return string|WP_Error The short description saved.
+	 */
+	public static function generate_product_copy( $post_id ) {
+		$copy = Sox_SEO_AI::product_copy( $post_id );
+		if ( is_wp_error( $copy ) ) {
+			return $copy;
+		}
+		$result = Sox_SEO_AI::apply_product_copy( $post_id, $copy['short_description'], '' );
+		return is_wp_error( $result ) ? $result : $copy['short_description'];
+	}
+
+	/**
 	 * Count of items still missing data, for the bulk screen.
 	 *
-	 * @param string $task meta|alt.
+	 * @param string $task meta|alt|product_copy.
 	 * @param string $post_type Post type filter for the meta task.
 	 * @return int
 	 */
@@ -114,6 +177,10 @@ class Sox_SEO_Automation {
 			'posts_per_page' => 1,
 			'fields'         => 'ids',
 		);
+		if ( 'product_copy' === $task ) {
+			$query = new WP_Query( self::products_without_copy_args( 1 ) );
+			return (int) $query->found_posts;
+		}
 		if ( 'alt' === $task ) {
 			$args += array(
 				'post_type'      => 'attachment',

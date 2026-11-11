@@ -19,11 +19,14 @@ class Sox_SEO_AI {
 	/**
 	 * Shared system prompt.
 	 *
+	 * @param string $page_language Language of the page being worked on, if known.
 	 * @return string
 	 */
-	private static function system() {
+	private static function system( $page_language = '' ) {
 		$site     = get_bloginfo( 'name' );
 		$language = trim( (string) Sox_SEO_Options::get( 'language' ) );
+		// On a multilingual site each page has its own language.
+		$language = $page_language ? $page_language : $language;
 		$voice    = trim( (string) Sox_SEO_Options::get( 'brand_voice' ) );
 
 		$prompt  = "You are the SEO specialist for the website \"{$site}\" (" . home_url( '/' ) . "), which runs on WordPress" . ( class_exists( 'WooCommerce' ) ? ' and WooCommerce' : '' ) . ".\n\n";
@@ -166,7 +169,12 @@ class Sox_SEO_AI {
 		}
 		$ask .= self::post_context( $post );
 
-		$data = Sox_SEO_Anthropic::json( self::system(), $ask, self::meta_schema() );
+		$search = Sox_SEO_GSC::prompt_block( get_permalink( $post ) );
+		if ( $search ) {
+			$ask .= "\n\nThe data below shows what people actually typed into Google when this page appeared. Prefer a focus keyword that has real impressions and that the page can satisfy. A high-impression query with a low click rate means the current title is not earning the click.\n\n" . $search;
+		}
+
+		$data = Sox_SEO_Anthropic::json( self::system( Sox_SEO_Meta::post_language( $post_id ) ), $ask, self::meta_schema() );
 		return is_wp_error( $data ) ? $data : self::clean_meta( $data );
 	}
 
@@ -389,11 +397,11 @@ class Sox_SEO_AI {
 
 		$list = array();
 		foreach ( $candidates as $id => $candidate ) {
-			$list[] = $id . ' | ' . $candidate['title'] . ( $candidate['keyword'] ? ' | keyword: ' . $candidate['keyword'] : '' );
+			$list[] = $id . ' | ' . $candidate['title'] . ( $candidate['keyword'] ? ' | keyword: ' . $candidate['keyword'] : '' ) . ( ! empty( $candidate['orphan'] ) ? ' | no page links here yet' : '' );
 		}
 
 		$ask  = "Pick up to 5 places in the page text below where a link to another page on this site would genuinely help the reader. Internal links spread ranking strength and help search engines understand the site, but only when the linked page is truly relevant to the words being linked.\n\n";
-		$ask .= "For each link, `anchor_text` must be a phrase of 2 to 6 words copied character for character from the page text, because it is found and wrapped by exact match. Use each target page once. Returning fewer links, or none, is correct when nothing fits.\n\n";
+		$ask .= "For each link, `anchor_text` must be a phrase of 2 to 6 words copied character for character from the page text, because it is found and wrapped by exact match. Use each target page once. Pages marked \"no page links here yet\" are invisible to search engines until something links to them, so favour them when they fit equally well. Returning fewer links, or none, is correct when nothing fits.\n\n";
 		$ask .= "<page_text>\n{$content}\n</page_text>\n\n";
 		$ask .= "<candidate_pages format=\"id | title | keyword\">\n" . implode( "\n", $list ) . "\n</candidate_pages>";
 
@@ -448,5 +456,248 @@ class Sox_SEO_AI {
 			);
 		}
 		return $out;
+	}
+
+	/**
+	 * Audit a page against its focus keyword and return concrete fixes.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return array|WP_Error {summary, recommendations: [{priority, issue, fix}]}
+	 */
+	public static function audit( $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			return new WP_Error( 'sox_seo_not_found', __( 'Post not found.', 'sox-seo' ) );
+		}
+		$keyword = trim( (string) strtok( Sox_SEO_Meta::get_post( $post_id, 'focus_keyword' ), ',' ) );
+
+		$ask  = "Review this page the way an experienced SEO editor would, and list the changes that would most improve how it ranks and how well it serves the person searching.\n\n";
+		$ask .= $keyword
+			? "It should rank for: \"{$keyword}\".\n\n"
+			: "No focus keyword is set, so work out the search it is most likely meant to answer.\n\n";
+		$ask .= "Look at whether the page answers the search fully, what a searcher would still have to look up elsewhere, whether the opening gets to the point, whether sections are thin, and whether anything reads as outdated. Each recommendation must name the specific place in this page and say exactly what to add or change, so the site owner can act on it without asking a follow-up question. Leave out generic advice that would apply to any page. Give at most 8 recommendations, most valuable first; fewer is fine for a page that is already strong.\n\n";
+		$ask .= self::post_context( $post );
+
+		$headings = array();
+		if ( preg_match_all( '#<h([1-6])[^>]*>(.*?)</h\1>#is', $post->post_content, $matches, PREG_SET_ORDER ) ) {
+			foreach ( $matches as $match ) {
+				$headings[] = 'H' . $match[1] . ': ' . wp_strip_all_tags( $match[2] );
+			}
+		}
+		if ( $headings ) {
+			$ask .= "\n\n<headings>\n" . implode( "\n", $headings ) . "\n</headings>";
+		}
+		$search = Sox_SEO_GSC::prompt_block( get_permalink( $post ) );
+		if ( $search ) {
+			$ask .= "\n\nUse this real search data to judge what the page is being found for and where it falls short:\n\n" . $search;
+		}
+
+		$data = Sox_SEO_Anthropic::json(
+			self::system( Sox_SEO_Meta::post_language( $post_id ) ),
+			$ask,
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'summary'         => array(
+						'type'        => 'string',
+						'description' => 'Two sentences: how well the page serves its search today, and the single biggest gap.',
+					),
+					'recommendations' => array(
+						'type'  => 'array',
+						'items' => array(
+							'type'                 => 'object',
+							'properties'           => array(
+								'priority' => array(
+									'type' => 'string',
+									'enum' => array( 'high', 'medium', 'low' ),
+								),
+								'issue'    => array( 'type' => 'string' ),
+								'fix'      => array( 'type' => 'string' ),
+							),
+							'required'             => array( 'priority', 'issue', 'fix' ),
+							'additionalProperties' => false,
+						),
+					),
+				),
+				'required'             => array( 'summary', 'recommendations' ),
+				'additionalProperties' => false,
+			)
+		);
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
+
+		$out = array(
+			'summary'         => sanitize_text_field( (string) $data['summary'] ),
+			'recommendations' => array(),
+			'time'            => time(),
+		);
+		foreach ( (array) $data['recommendations'] as $item ) {
+			$out['recommendations'][] = array(
+				'priority' => in_array( $item['priority'], array( 'high', 'medium', 'low' ), true ) ? $item['priority'] : 'medium',
+				'issue'    => sanitize_text_field( (string) $item['issue'] ),
+				'fix'      => sanitize_text_field( (string) $item['fix'] ),
+			);
+		}
+		update_post_meta( $post_id, '_sox_seo_audit', wp_slash( $out ) );
+		return $out;
+	}
+
+	/**
+	 * Write a WooCommerce product's short and long description.
+	 *
+	 * @param int $post_id Product ID.
+	 * @return array|WP_Error {short_description, description}
+	 */
+	public static function product_copy( $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $post || 'product' !== $post->post_type ) {
+			return new WP_Error( 'sox_seo_not_found', __( 'Product not found.', 'sox-seo' ) );
+		}
+		$keyword = trim( (string) strtok( Sox_SEO_Meta::get_post( $post_id, 'focus_keyword' ), ',' ) );
+
+		$ask  = "Write the short description and the full description for this product page.\n\n";
+		$ask .= "The short description sits next to the price and the add-to-cart button: two or three sentences that tell a shopper what this is, who it is for and the main reason to choose it. The full description sits lower on the page for people who want detail: what it does, what is included, the specifications that matter when comparing, and practical notes on use. Unique, specific product copy is what lets a shop page outrank the many shops that paste the manufacturer's text.\n\n";
+		$ask .= "Work only from the facts below. Where the material gives no detail on something a shopper would want (dimensions, materials, what is in the box), leave it out; the shop owner will add it. Do not write a price, since prices change.\n\n";
+		$ask .= "Format the full description as simple HTML using only <p>, <h3>, <ul>, <li> and <strong>. The short description is plain text.\n\n";
+		if ( $keyword ) {
+			$ask .= "People search for this as \"{$keyword}\"; use that phrasing naturally.\n\n";
+		}
+		$ask .= self::post_context( $post );
+
+		$data = Sox_SEO_Anthropic::json(
+			self::system( Sox_SEO_Meta::post_language( $post_id ) ),
+			$ask,
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'short_description' => array( 'type' => 'string' ),
+					'description'       => array( 'type' => 'string' ),
+				),
+				'required'             => array( 'short_description', 'description' ),
+				'additionalProperties' => false,
+			)
+		);
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
+		$allowed = array(
+			'p'      => array(),
+			'h3'     => array(),
+			'ul'     => array(),
+			'li'     => array(),
+			'strong' => array(),
+		);
+		return array(
+			'short_description' => trim( wp_strip_all_tags( (string) $data['short_description'] ) ),
+			'description'       => trim( wp_kses( preg_replace( '#<(script|style)\b[^>]*>.*?</\1>#is', '', (string) $data['description'] ), $allowed ) ),
+		);
+	}
+
+	/**
+	 * Save product copy. The previous text is kept in post meta so it can be
+	 * restored, because products do not keep revisions.
+	 *
+	 * @param int    $post_id Product ID.
+	 * @param string $short   Short description, or '' to leave unchanged.
+	 * @param string $long    Full description HTML, or '' to leave unchanged.
+	 * @return true|WP_Error
+	 */
+	public static function apply_product_copy( $post_id, $short, $long ) {
+		$post = get_post( $post_id );
+		if ( ! $post || 'product' !== $post->post_type ) {
+			return new WP_Error( 'sox_seo_not_found', __( 'Product not found.', 'sox-seo' ) );
+		}
+		$update = array( 'ID' => $post_id );
+		if ( '' !== $short ) {
+			update_post_meta( $post_id, '_sox_seo_prev_excerpt', wp_slash( $post->post_excerpt ) );
+			$update['post_excerpt'] = wp_slash( $short );
+		}
+		if ( '' !== $long ) {
+			if ( ! Sox_SEO_Links::can_edit_content( $post_id ) ) {
+				return new WP_Error( 'sox_seo_builder', __( 'This product page is built with Elementor, so the full description must be pasted in the Elementor editor.', 'sox-seo' ) );
+			}
+			update_post_meta( $post_id, '_sox_seo_prev_content', wp_slash( $post->post_content ) );
+			$update['post_content'] = wp_slash( $long );
+		}
+		if ( count( $update ) > 1 ) {
+			$result = wp_update_post( $update, true );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Find questions and answers that are visibly on the page, for FAQ schema.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return array|WP_Error List of {question, answer}; saved to the post.
+	 */
+	public static function faqs( $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			return new WP_Error( 'sox_seo_not_found', __( 'Post not found.', 'sox-seo' ) );
+		}
+		$content = self::plain_content( $post );
+
+		$ask  = "Find the questions that this page asks and answers in its own text, so they can be marked up as FAQ structured data.\n\n";
+		$ask .= "Google only accepts FAQ markup for questions and answers a visitor can read on the page, and treats markup for anything else as spam. So copy each question exactly as the page words it, and build each answer from the page's own sentences that follow it. If the page contains no question-and-answer content, return an empty list; that is the correct result for most pages.\n\n";
+		$ask .= self::post_context( $post );
+
+		$data = Sox_SEO_Anthropic::json(
+			self::system( Sox_SEO_Meta::post_language( $post_id ) ),
+			$ask,
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'faqs' => array(
+						'type'  => 'array',
+						'items' => array(
+							'type'                 => 'object',
+							'properties'           => array(
+								'question' => array( 'type' => 'string' ),
+								'answer'   => array( 'type' => 'string' ),
+							),
+							'required'             => array( 'question', 'answer' ),
+							'additionalProperties' => false,
+						),
+					),
+				),
+				'required'             => array( 'faqs' ),
+				'additionalProperties' => false,
+			)
+		);
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
+
+		// Keep only questions whose wording really is on the page.
+		$normalize = static function ( $text ) {
+			return mb_strtolower( trim( preg_replace( '/[\s\p{P}]+/u', ' ', $text ) ) );
+		};
+		$haystack  = $normalize( $content );
+		$faqs      = array();
+		foreach ( (array) $data['faqs'] as $faq ) {
+			$question = trim( wp_strip_all_tags( (string) $faq['question'] ) );
+			$answer   = trim( wp_strip_all_tags( (string) $faq['answer'] ) );
+			if ( '' === $question || '' === $answer ) {
+				continue;
+			}
+			if ( false === mb_strpos( $haystack, $normalize( $question ) ) ) {
+				continue;
+			}
+			$faqs[] = array(
+				'question' => $question,
+				'answer'   => $answer,
+			);
+		}
+		if ( $faqs ) {
+			update_post_meta( $post_id, '_sox_seo_faq', wp_slash( $faqs ) );
+		} else {
+			delete_post_meta( $post_id, '_sox_seo_faq' );
+		}
+		return $faqs;
 	}
 }

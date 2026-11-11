@@ -78,7 +78,7 @@ class Sox_SEO_WooCommerce {
 	 * @param WC_Product $product Product.
 	 * @return string
 	 */
-	private static function brand( $product ) {
+	public static function brand( $product ) {
 		foreach ( array( 'product_brand', 'pwb-brand', 'yith_product_brand' ) as $taxonomy ) {
 			if ( taxonomy_exists( $taxonomy ) ) {
 				$names = wp_get_post_terms( $product->get_id(), $taxonomy, array( 'fields' => 'names' ) );

@@ -74,7 +74,6 @@ class Sox_SEO_Admin {
 					'apply'        => __( 'Add selected links', 'sox-seo' ),
 					/* translators: %d: number of links */
 					'linksAdded'   => __( '%d link(s) added and saved as a revision. Reload the page to see them.', 'sox-seo' ),
-					'builderLinks' => __( 'This page is built with Elementor: add these links in the Elementor editor.', 'sox-seo' ),
 					'start'        => __( 'Start', 'sox-seo' ),
 					'stop'         => __( 'Stop', 'sox-seo' ),
 					'done'         => __( 'All done. Nothing left to optimize.', 'sox-seo' ),
@@ -83,6 +82,22 @@ class Sox_SEO_Admin {
 					'remaining'    => __( '%d remaining', 'sox-seo' ),
 					'connected'    => __( 'Connected. Claude replied successfully.', 'sox-seo' ),
 					'chars'        => __( 'characters', 'sox-seo' ),
+					'noFaq'        => __( 'No question-and-answer content found on this page, so no FAQ markup was added.', 'sox-seo' ),
+					/* translators: %d: number of questions */
+					'faqSaved'     => __( '%d question(s) found and marked up as FAQ schema.', 'sox-seo' ),
+					'faqCleared'   => __( 'FAQ schema removed from this page.', 'sox-seo' ),
+					'copySaved'    => __( 'Saved. Reload the page to see the new description.', 'sox-seo' ),
+					'saveCopy'     => __( 'Save selected', 'sox-seo' ),
+					'shortDesc'    => __( 'Short description', 'sox-seo' ),
+					'fullDesc'     => __( 'Full description', 'sox-seo' ),
+					/* translators: 1: scanned, 2: total */
+					'scanning'     => __( 'Scanned %1$d of %2$d…', 'sox-seo' ),
+					'scanDone'     => __( 'Scan finished. Reloading…', 'sox-seo' ),
+					'priority'     => array(
+						'high'   => __( 'High', 'sox-seo' ),
+						'medium' => __( 'Medium', 'sox-seo' ),
+						'low'    => __( 'Low', 'sox-seo' ),
+					),
 				),
 			)
 		);
@@ -188,6 +203,7 @@ class Sox_SEO_Admin {
 		?>
 		<div class="wrap sox-seo">
 			<h1>Sox SEO</h1>
+			<?php settings_errors( 'sox_seo' ); ?>
 			<form method="post" action="options.php">
 				<?php settings_fields( 'sox_seo' ); ?>
 
@@ -274,6 +290,62 @@ class Sox_SEO_Admin {
 					<?php endif; ?>
 				</table>
 
+				<h2><?php esc_html_e( 'Google Search Console', 'sox-seo' ); ?></h2>
+				<p><?php esc_html_e( 'Connect Search Console and Claude sees the real searches each page appears for, so titles, keywords and content audits are based on data.', 'sox-seo' ); ?></p>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Service account key', 'sox-seo' ); ?></th>
+						<td>
+							<?php $gsc = Sox_SEO_GSC::credentials(); ?>
+							<?php if ( $gsc ) : ?>
+								<p><strong><?php esc_html_e( 'Connected as', 'sox-seo' ); ?></strong> <code><?php echo esc_html( $gsc['client_email'] ); ?></code></p>
+							<?php endif; ?>
+							<textarea class="large-text code" rows="3" name="<?php echo esc_attr( $option ); ?>[gsc_key]" placeholder="<?php echo $gsc ? esc_attr__( 'Paste a new JSON key to replace, or type delete to disconnect', 'sox-seo' ) : '{ "type": "service_account", … }'; ?>"></textarea>
+							<p class="description">
+								<?php esc_html_e( '1. In Google Cloud Console, create a project, enable the "Google Search Console API", create a service account and download its JSON key. 2. Paste the whole file here. 3. In Search Console → Settings → Users and permissions, add the service account\'s e-mail address as a user.', 'sox-seo' ); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Property', 'sox-seo' ); ?></th>
+						<td>
+							<?php
+							/* translators: %s: site URL */
+							self::text( 'gsc_property', sprintf( __( 'Leave blank for %s. For a domain property enter sc-domain:example.com', 'sox-seo' ), home_url( '/' ) ) );
+							?>
+						</td>
+					</tr>
+				</table>
+
+				<h2><?php esc_html_e( 'Crawlers & reports', 'sox-seo' ); ?></h2>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e( 'IndexNow', 'sox-seo' ); ?></th>
+						<td><?php self::checkbox( 'indexnow', __( 'Tell Bing, Yandex and other IndexNow search engines the moment a page is published or changed', 'sox-seo' ), __( 'Google does not use IndexNow; it relies on the sitemap.', 'sox-seo' ) ); ?></td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'AI assistants', 'sox-seo' ); ?></th>
+						<td>
+							<?php
+							/* translators: %s: llms.txt URL */
+							self::checkbox( 'llms_txt', sprintf( __( 'Publish %s, a plain-text guide to the site for AI assistants', 'sox-seo' ), home_url( '/llms.txt' ) ) );
+							?>
+							<br />
+							<?php self::checkbox( 'block_ai_training', __( 'Ask AI companies not to use this site to train their models (robots.txt)', 'sox-seo' ), __( 'Blocks training crawlers such as GPTBot, ClaudeBot and Google-Extended. Search engines are not affected.', 'sox-seo' ) ); ?>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Weekly report', 'sox-seo' ); ?></th>
+						<td>
+							<?php self::checkbox( 'weekly_report', __( 'E-mail a weekly SEO summary', 'sox-seo' ) ); ?><br />
+							<?php
+							/* translators: %s: admin e-mail */
+							self::text( 'report_email', sprintf( __( 'Leave blank to send to %s.', 'sox-seo' ), get_option( 'admin_email' ) ), 'email' );
+							?>
+						</td>
+					</tr>
+				</table>
+
 				<?php if ( $native ) : ?>
 				<input type="hidden" name="<?php echo esc_attr( $option ); ?>[_native]" value="1" />
 				<h2><?php esc_html_e( 'Titles & meta', 'sox-seo' ); ?></h2>
@@ -336,13 +408,49 @@ class Sox_SEO_Admin {
 						<td><?php self::textarea( 'org_social', __( 'One URL per line: Facebook, Instagram, LinkedIn, YouTube…', 'sox-seo' ) ); ?></td>
 					</tr>
 				</table>
+
+				<h2><?php esc_html_e( 'Local business', 'sox-seo' ); ?></h2>
+				<p><?php esc_html_e( 'For a business with a shop, showroom or office customers can visit. Helps the site appear in Google Maps and "near me" searches. Use exactly the details shown on your Google Business Profile.', 'sox-seo' ); ?></p>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Local business', 'sox-seo' ); ?></th>
+						<td><?php self::checkbox( 'local_enabled', __( 'Add local business details to the schema', 'sox-seo' ) ); ?></td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Business type', 'sox-seo' ); ?></th>
+						<td><?php self::text( 'local_type', __( 'A schema.org type such as Store, SportingGoodsStore, HomeGoodsStore, Restaurant or LocalBusiness.', 'sox-seo' ) ); ?></td>
+					</tr>
+					<tr><th scope="row"><?php esc_html_e( 'Street address', 'sox-seo' ); ?></th><td><?php self::text( 'local_street' ); ?></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'City', 'sox-seo' ); ?></th><td><?php self::text( 'local_city' ); ?></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'Region / governorate', 'sox-seo' ); ?></th><td><?php self::text( 'local_region' ); ?></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'Postcode', 'sox-seo' ); ?></th><td><?php self::text( 'local_postcode' ); ?></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'Country code', 'sox-seo' ); ?></th><td><?php self::text( 'local_country', __( 'Two letters, for example JO.', 'sox-seo' ) ); ?></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'Phone', 'sox-seo' ); ?></th><td><?php self::text( 'local_phone', __( 'With country code, for example +962 6 123 4567.', 'sox-seo' ) ); ?></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'Latitude', 'sox-seo' ); ?></th><td><?php self::text( 'local_lat' ); ?></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'Longitude', 'sox-seo' ); ?></th><td><?php self::text( 'local_lng' ); ?></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'Price range', 'sox-seo' ); ?></th><td><?php self::text( 'local_price_range', __( 'For example $$ or JOD 10–500.', 'sox-seo' ) ); ?></td></tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Opening hours', 'sox-seo' ); ?></th>
+						<td><?php self::textarea( 'local_hours', __( 'One line per rule, for example: Sa-Th 10:00-22:00', 'sox-seo' ) ); ?></td>
+					</tr>
+				</table>
 				<?php endif; ?>
 
 				<h2><?php esc_html_e( 'Images, links & WooCommerce', 'sox-seo' ); ?></h2>
 				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Images', 'sox-seo' ); ?></th>
-						<td><?php self::checkbox( 'alt_fallback', __( 'When an image has no alt text yet, use the page or product title', 'sox-seo' ) ); ?></td>
+						<td>
+							<?php self::checkbox( 'alt_fallback', __( 'When an image has no alt text yet, use the page or product title', 'sox-seo' ) ); ?><br />
+							<?php self::checkbox( 'rename_uploads', __( 'Rename camera-style uploads (IMG_4471.jpg) after the page they are added to', 'sox-seo' ) ); ?><br />
+							<?php self::checkbox( 'webp', __( 'Convert new JPEG uploads to WebP (smaller files, faster pages)', 'sox-seo' ), __( 'Applies to images uploaded from now on. The original JPEG is kept on the server.', 'sox-seo' ) ); ?>
+							<p>
+								<label><?php esc_html_e( 'Compression quality for resized images:', 'sox-seo' ); ?>
+									<input type="number" min="40" max="100" class="small-text" name="<?php echo esc_attr( $option ); ?>[image_quality]" value="<?php echo esc_attr( (string) Sox_SEO_Options::get( 'image_quality' ) ); ?>" />
+								</label>
+								<span class="description"><?php esc_html_e( '82 is WordPress\'s default; 75 is noticeably smaller with little visible loss.', 'sox-seo' ); ?></span>
+							</p>
+						</td>
 					</tr>
 					<tr>
 						<th scope="row"><?php esc_html_e( 'External links', 'sox-seo' ); ?></th>
@@ -400,6 +508,21 @@ class Sox_SEO_Admin {
 						<?php
 						/* translators: %s: number of items */
 						printf( esc_html__( '%s published items have no meta description.', 'sox-seo' ), '<strong>' . esc_html( number_format_i18n( Sox_SEO_Automation::remaining( 'meta' ) ) ) . '</strong>' );
+						?>
+					</p>
+					<p><button type="button" class="button button-primary sox-seo-bulk-start"><?php esc_html_e( 'Start', 'sox-seo' ); ?></button> <span class="sox-seo-status"></span></p>
+					<ol class="sox-seo-log"></ol>
+				</div>
+				<?php endif; ?>
+
+				<?php if ( class_exists( 'WooCommerce' ) ) : ?>
+				<div class="sox-seo-card" data-task="product_copy">
+					<h2><?php esc_html_e( 'Product short descriptions', 'sox-seo' ); ?></h2>
+					<p><?php esc_html_e( 'Claude writes the short description for products that have none. Full descriptions are only written from the product editor, where you can preview them first.', 'sox-seo' ); ?></p>
+					<p class="sox-seo-count">
+						<?php
+						/* translators: %s: number of products */
+						printf( esc_html__( '%s products have no short description.', 'sox-seo' ), '<strong>' . esc_html( number_format_i18n( Sox_SEO_Automation::remaining( 'product_copy' ) ) ) . '</strong>' );
 						?>
 					</p>
 					<p><button type="button" class="button button-primary sox-seo-bulk-start"><?php esc_html_e( 'Start', 'sox-seo' ); ?></button> <span class="sox-seo-status"></span></p>
@@ -635,6 +758,22 @@ class Sox_SEO_Admin {
 						<label><input type="checkbox" name="sox_seo[noindex]" value="1" <?php checked( Sox_SEO_Meta::get_post( $post->ID, 'noindex' ), '1' ); ?> /> <?php esc_html_e( 'Hide this page from search engines (noindex)', 'sox-seo' ); ?></label>
 					</p>
 				</details>
+				<details class="sox-seo-advanced">
+					<summary><?php esc_html_e( 'Social sharing (Facebook, WhatsApp, X)', 'sox-seo' ); ?></summary>
+					<p class="sox-seo-muted"><?php esc_html_e( 'Leave blank to share with the SEO title, description and featured image.', 'sox-seo' ); ?></p>
+					<p>
+						<label for="sox-seo-field-og_title"><?php esc_html_e( 'Social title', 'sox-seo' ); ?></label>
+						<input type="text" class="widefat" id="sox-seo-field-og_title" name="sox_seo[og_title]" value="<?php echo esc_attr( Sox_SEO_Meta::get_post( $post->ID, 'og_title' ) ); ?>" />
+					</p>
+					<p>
+						<label for="sox-seo-field-og_description"><?php esc_html_e( 'Social description', 'sox-seo' ); ?></label>
+						<textarea class="widefat" rows="2" id="sox-seo-field-og_description" name="sox_seo[og_description]"><?php echo esc_textarea( Sox_SEO_Meta::get_post( $post->ID, 'og_description' ) ); ?></textarea>
+					</p>
+					<p>
+						<label for="sox-seo-field-og_image"><?php esc_html_e( 'Social image URL (1200×630 works best)', 'sox-seo' ); ?></label>
+						<input type="url" class="widefat" id="sox-seo-field-og_image" name="sox_seo[og_image]" value="<?php echo esc_attr( Sox_SEO_Meta::get_post( $post->ID, 'og_image' ) ); ?>" />
+					</p>
+				</details>
 			<?php else : ?>
 				<p class="sox-seo-muted">
 					<?php
@@ -650,9 +789,22 @@ class Sox_SEO_Admin {
 						<button type="button" class="button button-primary sox-seo-generate"><?php esc_html_e( 'Generate with Claude', 'sox-seo' ); ?></button>
 					<?php endif; ?>
 					<button type="button" class="button sox-seo-links"><?php esc_html_e( 'Suggest internal links', 'sox-seo' ); ?></button>
+					<button type="button" class="button sox-seo-audit"><?php esc_html_e( 'Audit content', 'sox-seo' ); ?></button>
+					<?php if ( 'product' === $post->post_type ) : ?>
+						<button type="button" class="button sox-seo-copy"><?php esc_html_e( 'Write product description', 'sox-seo' ); ?></button>
+					<?php endif; ?>
+					<button type="button" class="button sox-seo-faq"><?php esc_html_e( 'Detect FAQs', 'sox-seo' ); ?></button>
+					<?php
+					$faqs      = get_post_meta( $post->ID, '_sox_seo_faq', true );
+					$faq_count = is_array( $faqs ) ? count( $faqs ) : 0;
+					?>
+					<button type="button" class="button-link sox-seo-danger sox-seo-faq-clear" <?php echo $faq_count > 0 ? '' : 'hidden'; ?>><?php esc_html_e( 'Remove FAQ schema', 'sox-seo' ); ?></button>
 					<span class="sox-seo-status" role="status"></span>
 				</p>
 				<div class="sox-seo-link-results"></div>
+				<div class="sox-seo-copy-results"></div>
+				<?php $audit = get_post_meta( $post->ID, '_sox_seo_audit', true ); ?>
+				<div class="sox-seo-audit-results" data-audit="<?php echo esc_attr( is_array( $audit ) ? wp_json_encode( $audit ) : '' ); ?>"></div>
 			<?php endif; ?>
 
 			<?php if ( $analysis ) : ?>
@@ -699,6 +851,9 @@ class Sox_SEO_Admin {
 		Sox_SEO_Meta::set_post( $post_id, 'description', isset( $input['description'] ) ? sanitize_textarea_field( $input['description'] ) : '' );
 		Sox_SEO_Meta::set_post( $post_id, 'canonical', isset( $input['canonical'] ) ? esc_url_raw( $input['canonical'] ) : '' );
 		Sox_SEO_Meta::set_post( $post_id, 'noindex', empty( $input['noindex'] ) ? '' : '1' );
+		Sox_SEO_Meta::set_post( $post_id, 'og_title', isset( $input['og_title'] ) ? sanitize_text_field( $input['og_title'] ) : '' );
+		Sox_SEO_Meta::set_post( $post_id, 'og_description', isset( $input['og_description'] ) ? sanitize_textarea_field( $input['og_description'] ) : '' );
+		Sox_SEO_Meta::set_post( $post_id, 'og_image', isset( $input['og_image'] ) ? esc_url_raw( $input['og_image'] ) : '' );
 	}
 
 	/* --------------------------------------------------------------------- */

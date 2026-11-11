@@ -64,6 +64,31 @@ class Sox_SEO_Options {
 			// Redirects.
 			'redirects_enabled'     => 1,
 			'log_404'               => 1,
+			// Images.
+			'webp'                  => 0,
+			'image_quality'         => 82,
+			'rename_uploads'        => 1,
+			// Crawlers.
+			'indexnow'              => 0,
+			'llms_txt'              => 1,
+			'block_ai_training'     => 0,
+			// Search Console and reports.
+			'gsc_property'          => '',
+			'weekly_report'         => 0,
+			'report_email'          => '',
+			// Local business schema.
+			'local_enabled'         => 0,
+			'local_type'            => 'LocalBusiness',
+			'local_street'          => '',
+			'local_city'            => '',
+			'local_region'          => '',
+			'local_postcode'        => '',
+			'local_country'         => '',
+			'local_phone'           => '',
+			'local_lat'             => '',
+			'local_lng'             => '',
+			'local_price_range'     => '',
+			'local_hours'           => '',
 		);
 	}
 
@@ -132,12 +157,19 @@ class Sox_SEO_Options {
 			'external_nofollow',
 			'redirects_enabled',
 			'log_404',
+			'webp',
+			'rename_uploads',
+			'indexnow',
+			'llms_txt',
+			'block_ai_training',
+			'weekly_report',
+			'local_enabled',
 		);
 		foreach ( $checkboxes as $key ) {
 			$out[ $key ] = empty( $input[ $key ] ) ? 0 : 1;
 		}
 
-		$texts = array( 'language', 'separator', 'title_single', 'title_term', 'home_title', 'org_name', 'default_brand' );
+		$texts = array( 'language', 'separator', 'title_single', 'title_term', 'home_title', 'org_name', 'default_brand', 'gsc_property', 'local_type', 'local_street', 'local_city', 'local_region', 'local_postcode', 'local_country', 'local_phone', 'local_lat', 'local_lng', 'local_price_range' );
 		foreach ( $texts as $key ) {
 			$out[ $key ] = isset( $input[ $key ] ) ? sanitize_text_field( wp_unslash( $input[ $key ] ) ) : $defaults[ $key ];
 		}
@@ -147,7 +179,7 @@ class Sox_SEO_Options {
 			}
 		}
 
-		foreach ( array( 'brand_voice', 'home_description', 'org_social' ) as $key ) {
+		foreach ( array( 'brand_voice', 'home_description', 'org_social', 'local_hours' ) as $key ) {
 			$out[ $key ] = isset( $input[ $key ] ) ? sanitize_textarea_field( wp_unslash( $input[ $key ] ) ) : '';
 		}
 		foreach ( array( 'default_og_image', 'org_logo' ) as $key ) {
@@ -163,11 +195,22 @@ class Sox_SEO_Options {
 		$limit                        = isset( $input['autopilot_daily_limit'] ) ? absint( $input['autopilot_daily_limit'] ) : $defaults['autopilot_daily_limit'];
 		$out['autopilot_daily_limit'] = max( 1, min( 500, $limit ) );
 
+		$out['local_type']    = preg_replace( '/[^A-Za-z]/', '', $out['local_type'] );
+		$out['local_type']    = $out['local_type'] ? $out['local_type'] : 'LocalBusiness';
+		$out['report_email']  = isset( $input['report_email'] ) ? sanitize_email( wp_unslash( $input['report_email'] ) ) : '';
+		$quality              = isset( $input['image_quality'] ) ? absint( $input['image_quality'] ) : $defaults['image_quality'];
+		$out['image_quality'] = max( 40, min( 100, $quality ) );
+
+		if ( isset( $input['gsc_key'] ) ) {
+			// A JSON key file: only trimmed here, validated and reduced in save_key().
+			Sox_SEO_GSC::save_key( (string) wp_unslash( $input['gsc_key'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		}
+
 		// The titles and schema sections are hidden while another SEO plugin
 		// is active. Their values were not submitted, so keep what was saved.
 		if ( empty( $input['_native'] ) ) {
 			$current = self::all();
-			$native  = array( 'separator', 'title_single', 'title_term', 'home_title', 'home_description', 'default_og_image', 'noindex_search', 'sitemap_no_users', 'schema_enabled', 'org_name', 'org_logo', 'org_social' );
+			$native  = array( 'separator', 'title_single', 'title_term', 'home_title', 'home_description', 'default_og_image', 'noindex_search', 'sitemap_no_users', 'schema_enabled', 'org_name', 'org_logo', 'org_social', 'local_enabled', 'local_type', 'local_street', 'local_city', 'local_region', 'local_postcode', 'local_country', 'local_phone', 'local_lat', 'local_lng', 'local_price_range', 'local_hours' );
 			foreach ( $native as $key ) {
 				$out[ $key ] = $current[ $key ];
 			}

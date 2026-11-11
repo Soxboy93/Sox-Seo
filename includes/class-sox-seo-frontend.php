@@ -211,6 +211,13 @@ class Sox_SEO_Frontend {
 	 */
 	public static function image() {
 		$post = self::current_post();
+		if ( $post && Sox_SEO_Meta::get_post( $post->ID, 'og_image' ) ) {
+			return array(
+				'url'    => Sox_SEO_Meta::get_post( $post->ID, 'og_image' ),
+				'width'  => 0,
+				'height' => 0,
+			);
+		}
 		if ( $post && has_post_thumbnail( $post ) ) {
 			$src = wp_get_attachment_image_src( get_post_thumbnail_id( $post ), 'full' );
 			if ( $src ) {
@@ -270,11 +277,17 @@ class Sox_SEO_Frontend {
 			$type = 'article';
 		}
 
+		// Optional wording for social shares, set per page.
+		$social_title       = $post ? Sox_SEO_Meta::get_post( $post->ID, 'og_title' ) : '';
+		$social_description = $post ? Sox_SEO_Meta::get_post( $post->ID, 'og_description' ) : '';
+		$social_title       = '' !== $social_title ? $social_title : $title;
+		$social_description = '' !== $social_description ? $social_description : $description;
+
 		$og = array(
 			'og:locale'      => get_locale(),
 			'og:type'        => $type,
-			'og:title'       => $title,
-			'og:description' => $description,
+			'og:title'       => $social_title,
+			'og:description' => $social_description,
 			'og:url'         => $canonical,
 			'og:site_name'   => get_bloginfo( 'name' ),
 		);
@@ -302,11 +315,20 @@ class Sox_SEO_Frontend {
 				printf( "<meta property=\"%s\" content=\"%s\" />\n", esc_attr( $property ), esc_attr( $content ) );
 			}
 		}
+		// Other language versions of this page (Polylang).
+		if ( $post && function_exists( 'pll_get_post_translations' ) && function_exists( 'pll_get_post_language' ) ) {
+			foreach ( (array) pll_get_post_translations( $post->ID ) as $translation_id ) {
+				$locale = (int) $translation_id !== (int) $post->ID ? pll_get_post_language( $translation_id, 'locale' ) : '';
+				if ( $locale ) {
+					printf( "<meta property=\"og:locale:alternate\" content=\"%s\" />\n", esc_attr( $locale ) );
+				}
+			}
+		}
 
 		$twitter = array(
 			'twitter:card'        => $image ? 'summary_large_image' : 'summary',
-			'twitter:title'       => $title,
-			'twitter:description' => $description,
+			'twitter:title'       => $social_title,
+			'twitter:description' => $social_description,
 			'twitter:image'       => $image ? $image['url'] : '',
 		);
 		foreach ( $twitter as $name => $content ) {

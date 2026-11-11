@@ -69,7 +69,7 @@ class Sox_SEO_Schema {
 		if ( $social ) {
 			$org['sameAs'] = array_values( $social );
 		}
-		$graph[] = $org;
+		$graph[] = self::local_business( $org );
 
 		// WebSite, with the sitelinks search box action.
 		$graph[] = array_filter( array(
@@ -176,6 +176,57 @@ class Sox_SEO_Schema {
 	}
 
 	/**
+	 * Turn the Organization node into a local business when a physical
+	 * location is configured, so the site can appear in map and "near me"
+	 * results.
+	 *
+	 * @param array $org Organization node.
+	 * @return array
+	 */
+	private static function local_business( array $org ) {
+		$o = Sox_SEO_Options::all();
+		if ( empty( $o['local_enabled'] ) ) {
+			return $org;
+		}
+		$org['@type'] = array( 'Organization', $o['local_type'] ? $o['local_type'] : 'LocalBusiness' );
+
+		$address = array_filter(
+			array(
+				'streetAddress'   => $o['local_street'],
+				'addressLocality' => $o['local_city'],
+				'addressRegion'   => $o['local_region'],
+				'postalCode'      => $o['local_postcode'],
+				'addressCountry'  => $o['local_country'],
+			)
+		);
+		if ( $address ) {
+			$org['address'] = array_merge( array( '@type' => 'PostalAddress' ), $address );
+		}
+		if ( $o['local_phone'] ) {
+			$org['telephone'] = $o['local_phone'];
+		}
+		if ( is_numeric( $o['local_lat'] ) && is_numeric( $o['local_lng'] ) ) {
+			$org['geo'] = array(
+				'@type'     => 'GeoCoordinates',
+				'latitude'  => (float) $o['local_lat'],
+				'longitude' => (float) $o['local_lng'],
+			);
+		}
+		if ( $o['local_price_range'] ) {
+			$org['priceRange'] = $o['local_price_range'];
+		}
+		if ( ! empty( $org['logo']['url'] ) ) {
+			$org['image'] = $org['logo']['url'];
+		}
+		// One line per rule, in schema.org form: "Mo-Fr 09:00-18:00".
+		$hours = array_values( array_filter( array_map( 'trim', preg_split( '/\R/', (string) $o['local_hours'] ) ) ) );
+		if ( $hours ) {
+			$org['openingHours'] = $hours;
+		}
+		return $org;
+	}
+
+	/**
 	 * Breadcrumb trail for the current view.
 	 *
 	 * @return array<int,array{name:string,url:string}>
@@ -234,6 +285,16 @@ class Sox_SEO_Schema {
 						'name' => $object->labels->name,
 						'url'  => $archive,
 					);
+				}
+				// Products and other types: follow their category, if any.
+				foreach ( get_object_taxonomies( $post->post_type, 'objects' ) as $taxonomy ) {
+					if ( $taxonomy->hierarchical && $taxonomy->public ) {
+						$terms = wp_get_post_terms( $post->ID, $taxonomy->name );
+						if ( ! is_wp_error( $terms ) && $terms ) {
+							$add_term_trail( $terms[0] );
+							break;
+						}
+					}
 				}
 			}
 			$crumbs[] = array(

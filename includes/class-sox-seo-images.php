@@ -13,10 +13,70 @@ class Sox_SEO_Images {
 		add_action( 'add_attachment', array( __CLASS__, 'on_upload' ) );
 		add_action( 'sox_seo_generate_alt', array( __CLASS__, 'generate' ) );
 
+		add_filter( 'wp_editor_set_quality', array( __CLASS__, 'quality' ) );
+		if ( Sox_SEO_Options::get( 'webp' ) ) {
+			add_filter( 'image_editor_output_format', array( __CLASS__, 'webp_sizes' ) );
+		}
+		if ( Sox_SEO_Options::get( 'rename_uploads' ) ) {
+			add_filter( 'wp_handle_upload_prefilter', array( __CLASS__, 'rename_upload' ) );
+		}
+
 		if ( Sox_SEO_Options::get( 'alt_fallback' ) ) {
 			add_filter( 'wp_get_attachment_image_attributes', array( __CLASS__, 'attachment_alt' ), 20, 2 );
 			add_filter( 'wp_content_img_tag', array( __CLASS__, 'content_img_alt' ), 20, 3 );
 		}
+	}
+
+	/**
+	 * Compression level for the resized copies WordPress generates.
+	 *
+	 * @return int
+	 */
+	public static function quality() {
+		return (int) Sox_SEO_Options::get( 'image_quality' );
+	}
+
+	/**
+	 * Convert JPEG uploads and their resized copies to WebP, which is
+	 * markedly smaller at the same visual quality. WordPress keeps the
+	 * original JPEG on disk.
+	 *
+	 * @param array $formats Map of source MIME type to output MIME type.
+	 * @return array
+	 */
+	public static function webp_sizes( $formats ) {
+		if ( wp_image_editor_supports( array( 'mime_type' => 'image/webp' ) ) ) {
+			$formats['image/jpeg'] = 'image/webp';
+		}
+		return $formats;
+	}
+
+	/**
+	 * Give camera-style uploads (IMG_4471.jpg, Screenshot 2026-01-01.png) a
+	 * descriptive file name taken from the page they are uploaded to. File
+	 * names are a small but real signal for image search.
+	 *
+	 * @param array $file Upload being handled.
+	 * @return array
+	 */
+	public static function rename_upload( $file ) {
+		$post_id = isset( $_REQUEST['post_id'] ) ? absint( $_REQUEST['post_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( ! $post_id || empty( $file['name'] ) || 0 !== strpos( (string) $file['type'], 'image/' ) ) {
+			return $file;
+		}
+		$info = pathinfo( $file['name'] );
+		if ( empty( $info['extension'] ) ) {
+			return $file;
+		}
+		$generic = '/^(img|dsc[nf]?|pxl|mvimg|p|screenshot|screen shot|whatsapp image|image|images|photo|picture|untitled|download|unnamed)?[\s_\-.,()0-9at]*$/i';
+		if ( ! preg_match( $generic, $info['filename'] ) ) {
+			return $file; // Already has a meaningful name.
+		}
+		$slug = sanitize_title( get_the_title( $post_id ) );
+		if ( '' !== $slug && 'auto-draft' !== $slug ) {
+			$file['name'] = mb_substr( $slug, 0, 80 ) . '.' . strtolower( $info['extension'] );
+		}
+		return $file;
 	}
 
 	/**

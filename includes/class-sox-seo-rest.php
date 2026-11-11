@@ -63,6 +63,37 @@ class Sox_SEO_Rest {
 				'args'                => $post_arg,
 			)
 		);
+		foreach ( array( 'audit', 'faq', 'product-copy' ) as $route ) {
+			register_rest_route(
+				self::NS,
+				'/' . $route,
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( __CLASS__, str_replace( '-', '_', $route ) ),
+					'permission_callback' => array( __CLASS__, 'can_edit_post' ),
+					'args'                => $post_arg,
+				)
+			);
+		}
+		register_rest_route(
+			self::NS,
+			'/product-copy/apply',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'product_copy_apply' ),
+				'permission_callback' => array( __CLASS__, 'can_edit_post' ),
+				'args'                => $post_arg,
+			)
+		);
+		register_rest_route(
+			self::NS,
+			'/link-audit',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'link_audit' ),
+				'permission_callback' => array( __CLASS__, 'can_manage' ),
+			)
+		);
 		register_rest_route(
 			self::NS,
 			'/term-meta',
@@ -169,7 +200,7 @@ class Sox_SEO_Rest {
 		}
 		return array(
 			'links'     => $links,
-			'can_apply' => Sox_SEO_Links::can_edit_content( $post_id ),
+			'can_apply' => true,
 		);
 	}
 
@@ -198,6 +229,66 @@ class Sox_SEO_Rest {
 	 * @param WP_REST_Request $request Request.
 	 * @return array|WP_Error
 	 */
+	public static function audit( $request ) {
+		return Sox_SEO_AI::audit( (int) $request['post_id'] );
+	}
+
+	/**
+	 * Detect FAQs on the page, or clear the saved ones.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public static function faq( $request ) {
+		$post_id = (int) $request['post_id'];
+		if ( $request['clear'] ) {
+			delete_post_meta( $post_id, '_sox_seo_faq' );
+			return array( 'faqs' => array() );
+		}
+		$faqs = Sox_SEO_AI::faqs( $post_id );
+		return is_wp_error( $faqs ) ? $faqs : array( 'faqs' => $faqs );
+	}
+
+	/**
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public static function product_copy( $request ) {
+		return Sox_SEO_AI::product_copy( (int) $request['post_id'] );
+	}
+
+	/**
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public static function product_copy_apply( $request ) {
+		$allowed = array(
+			'p'      => array(),
+			'h3'     => array(),
+			'ul'     => array(),
+			'li'     => array(),
+			'strong' => array(),
+		);
+		$result = Sox_SEO_AI::apply_product_copy(
+			(int) $request['post_id'],
+			sanitize_textarea_field( (string) $request['short_description'] ),
+			trim( wp_kses( (string) $request['description'], $allowed ) )
+		);
+		return is_wp_error( $result ) ? $result : array( 'saved' => true );
+	}
+
+	/**
+	 * @param WP_REST_Request $request Request.
+	 * @return array
+	 */
+	public static function link_audit( $request ) {
+		return Sox_SEO_Link_Audit::step( (bool) $request['restart'] );
+	}
+
+	/**
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
 	public static function term_meta( $request ) {
 		$term_id = (int) $request['term_id'];
 		$meta    = Sox_SEO_AI::term_meta( $term_id );
@@ -216,7 +307,7 @@ class Sox_SEO_Rest {
 	 * @return array|WP_Error
 	 */
 	public static function bulk( $request ) {
-		$task      = 'alt' === $request['task'] ? 'alt' : 'meta';
+		$task      = in_array( $request['task'], array( 'alt', 'product_copy' ), true ) ? $request['task'] : 'meta';
 		$post_type = sanitize_key( (string) $request['post_type'] );
 		$exclude   = array_map( 'absint', (array) $request['exclude'] );
 
@@ -227,6 +318,8 @@ class Sox_SEO_Rest {
 			}
 			$types = ( $post_type && in_array( $post_type, Sox_SEO_Meta::post_types(), true ) ) ? array( $post_type ) : array();
 			$ids   = Sox_SEO_Automation::missing_meta( 1, $exclude, $types );
+		} elseif ( 'product_copy' === $task ) {
+			$ids = Sox_SEO_Automation::products_without_copy( 1, $exclude );
 		} else {
 			$ids = Sox_SEO_Images::missing_alt( 1, $exclude );
 		}
@@ -239,7 +332,13 @@ class Sox_SEO_Rest {
 		}
 
 		$id     = (int) $ids[0];
-		$result = 'meta' === $task ? Sox_SEO_Automation::generate_meta( $id ) : Sox_SEO_Images::generate( $id );
+		if ( 'meta' === $task ) {
+			$result = Sox_SEO_Automation::generate_meta( $id );
+		} elseif ( 'product_copy' === $task ) {
+			$result = Sox_SEO_Automation::generate_product_copy( $id );
+		} else {
+			$result = Sox_SEO_Images::generate( $id );
+		}
 		$error  = is_wp_error( $result ) ? $result->get_error_message() : '';
 
 		// A missing or rejected key will fail for every item: stop the run.

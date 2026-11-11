@@ -93,6 +93,8 @@
 			);
 		}
 
+		initContentTools( box, postId, status );
+
 		const links = $( '.sox-seo-links', box );
 		const results = $( '.sox-seo-link-results', box );
 		if ( links ) {
@@ -121,7 +123,6 @@
 			checkbox.type = 'checkbox';
 			checkbox.checked = true;
 			checkbox.value = String( index );
-			checkbox.disabled = ! response.can_apply;
 			const anchor = document.createElement( 'strong' );
 			anchor.textContent = '“' + link.anchor_text + '”';
 			const target = document.createElement( 'a' );
@@ -137,14 +138,6 @@
 			list.append( item );
 		} );
 		container.append( list );
-
-		if ( ! response.can_apply ) {
-			const note = document.createElement( 'p' );
-			note.className = 'sox-seo-muted';
-			note.textContent = t.builderLinks;
-			container.append( note );
-			return;
-		}
 
 		const apply = document.createElement( 'button' );
 		apply.type = 'button';
@@ -163,6 +156,166 @@
 			);
 		} );
 		container.append( apply );
+	}
+
+	/* ---- Content audit, FAQ schema, product descriptions ---------------- */
+
+	function el( tag, className, text ) {
+		const node = document.createElement( tag );
+		if ( className ) {
+			node.className = className;
+		}
+		if ( text ) {
+			node.textContent = text;
+		}
+		return node;
+	}
+
+	function renderAudit( container, audit ) {
+		container.textContent = '';
+		if ( ! audit || ! audit.recommendations ) {
+			return;
+		}
+		container.append( el( 'p', '', audit.summary ) );
+		const list = el( 'ol', 'sox-seo-audit-list' );
+		audit.recommendations.forEach( ( item ) => {
+			const row = el( 'li' );
+			row.append(
+				el( 'span', 'sox-seo-priority sox-seo-priority-' + item.priority, t.priority[ item.priority ] || item.priority ),
+				' ',
+				el( 'strong', '', item.issue ),
+				el( 'div', '', item.fix )
+			);
+			list.append( row );
+		} );
+		container.append( list );
+	}
+
+	function initContentTools( box, postId, status ) {
+		const auditButton = $( '.sox-seo-audit', box );
+		const auditResults = $( '.sox-seo-audit-results', box );
+		if ( auditResults && auditResults.dataset.audit ) {
+			try {
+				renderAudit( auditResults, JSON.parse( auditResults.dataset.audit ) );
+			} catch ( error ) {
+				// A damaged saved audit is simply not shown.
+			}
+		}
+		if ( auditButton ) {
+			auditButton.addEventListener( 'click', () =>
+				withButton( auditButton, status, () =>
+					api( '/audit', { post_id: postId } ).then( ( audit ) => {
+						setStatus( status, '' );
+						renderAudit( auditResults, audit );
+					} )
+				)
+			);
+		}
+
+		const faqButton = $( '.sox-seo-faq', box );
+		const faqClear = $( '.sox-seo-faq-clear', box );
+		if ( faqButton ) {
+			faqButton.addEventListener( 'click', () =>
+				withButton( faqButton, status, () =>
+					api( '/faq', { post_id: postId } ).then( ( response ) => {
+						const count = response.faqs.length;
+						setStatus( status, count ? t.faqSaved.replace( '%d', count ) : t.noFaq );
+						faqClear.hidden = ! count;
+					} )
+				)
+			);
+			faqClear.addEventListener( 'click', () =>
+				withButton( faqClear, status, () =>
+					api( '/faq', { post_id: postId, clear: true } ).then( () => {
+						setStatus( status, t.faqCleared );
+						faqClear.hidden = true;
+					} )
+				)
+			);
+		}
+
+		const copyButton = $( '.sox-seo-copy', box );
+		const copyResults = $( '.sox-seo-copy-results', box );
+		if ( copyButton ) {
+			copyButton.addEventListener( 'click', () =>
+				withButton( copyButton, status, () =>
+					api( '/product-copy', { post_id: postId } ).then( ( copy ) => {
+						setStatus( status, '' );
+						renderCopy( copyResults, copy, postId, status );
+					} )
+				)
+			);
+		}
+	}
+
+	/* Preview of generated product copy. The full description is shown as
+	 * text in an editable box; nothing is saved until the owner confirms. */
+	function renderCopy( container, copy, postId, status ) {
+		container.textContent = '';
+		const fields = [
+			[ 'short_description', t.shortDesc, 3 ],
+			[ 'description', t.fullDesc, 10 ],
+		].map( ( [ key, label, rows ] ) => {
+			const wrap = el( 'p' );
+			const check = el( 'input' );
+			check.type = 'checkbox';
+			check.checked = true;
+			const heading = el( 'label' );
+			heading.append( check, ' ', el( 'strong', '', label ) );
+			const area = el( 'textarea', 'widefat' );
+			area.rows = rows;
+			area.value = copy[ key ];
+			wrap.append( heading, area );
+			container.append( wrap );
+			return { key, check, area };
+		} );
+
+		const save = el( 'button', 'button button-primary', t.saveCopy );
+		save.type = 'button';
+		save.addEventListener( 'click', () => {
+			const data = { post_id: postId, short_description: '', description: '' };
+			fields.forEach( ( field ) => {
+				if ( field.check.checked ) {
+					data[ field.key ] = field.area.value;
+				}
+			} );
+			withButton( save, status, () =>
+				api( '/product-copy/apply', data ).then( () => {
+					setStatus( status, t.copySaved );
+					container.textContent = '';
+				} )
+			);
+		} );
+		container.append( save );
+	}
+
+	/* ---- Link audit ------------------------------------------------------ */
+
+	function initScan() {
+		const button = $( '#sox-seo-scan' );
+		if ( ! button ) {
+			return;
+		}
+		const status = $( '#sox-seo-scan-status' );
+		button.addEventListener( 'click', async () => {
+			button.disabled = true;
+			let restart = true;
+			try {
+				for ( ;; ) {
+					const result = await api( '/link-audit', { restart } );
+					restart = false;
+					setStatus( status, t.scanning.replace( '%1$d', result.scanned ).replace( '%2$d', result.total ) );
+					if ( result.done ) {
+						break;
+					}
+				}
+				setStatus( status, t.scanDone );
+				window.location.reload();
+			} catch ( error ) {
+				setStatus( status, errorText( error ), true );
+				button.disabled = false;
+			}
+		} );
 	}
 
 	/* ---- Term editor ----------------------------------------------------- */
@@ -277,5 +430,6 @@
 		initTerm();
 		initTest();
 		initBulk();
+		initScan();
 	} );
 } )();
