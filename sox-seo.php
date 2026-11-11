@@ -3,7 +3,7 @@
  * Plugin Name:       Sox SEO
  * Plugin URI:        https://github.com/soxboy93/sox-seo
  * Description:       AI-powered SEO for WordPress and WooCommerce. Uses Claude (Anthropic API) to write titles, meta descriptions, image alt text and internal links, and ships the technical SEO layer: meta tags, Open Graph, schema, sitemap tuning, redirects and 404 monitoring. Works standalone or as an AI layer on top of Rank Math, Yoast SEO or SEOPress.
- * Version:           1.1.0
+ * Version:           1.2.0
  * Requires at least: 6.4
  * Requires PHP:      7.4
  * Author:            Sox
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'SOX_SEO_VERSION', '1.1.0' );
+define( 'SOX_SEO_VERSION', '1.2.0' );
 define( 'SOX_SEO_FILE', __FILE__ );
 define( 'SOX_SEO_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOX_SEO_URL', plugin_dir_url( __FILE__ ) );
@@ -38,6 +38,9 @@ require_once SOX_SEO_DIR . 'includes/class-sox-seo-gsc.php';
 require_once SOX_SEO_DIR . 'includes/class-sox-seo-link-audit.php';
 require_once SOX_SEO_DIR . 'includes/class-sox-seo-extras.php';
 require_once SOX_SEO_DIR . 'includes/class-sox-seo-tools.php';
+require_once SOX_SEO_DIR . 'includes/class-sox-seo-lang.php';
+require_once SOX_SEO_DIR . 'includes/class-sox-seo-speed.php';
+require_once SOX_SEO_DIR . 'includes/class-sox-seo-cleanup.php';
 require_once SOX_SEO_DIR . 'includes/class-sox-seo-rest.php';
 require_once SOX_SEO_DIR . 'includes/class-sox-seo-admin.php';
 require_once SOX_SEO_DIR . 'includes/class-sox-seo-admin-pages.php';
@@ -52,6 +55,8 @@ register_deactivation_hook( __FILE__, 'sox_seo_clear_report_schedule' );
  */
 function sox_seo_clear_report_schedule() {
 	wp_clear_scheduled_hook( 'sox_seo_weekly_report' );
+	wp_clear_scheduled_hook( 'sox_seo_gsc_snapshot' );
+	wp_clear_scheduled_hook( 'sox_seo_link_audit_cron' );
 }
 
 /**
@@ -68,6 +73,8 @@ function sox_seo_boot() {
 	Sox_SEO_WooCommerce::init();
 	Sox_SEO_Extras::init();
 	Sox_SEO_Tools::init();
+	Sox_SEO_Lang::init();
+	Sox_SEO_Link_Audit::init();
 
 	// Only when Sox SEO is the site's SEO plugin. Printing a second set of
 	// titles, canonicals and schema next to another SEO plugin hurts rankings.

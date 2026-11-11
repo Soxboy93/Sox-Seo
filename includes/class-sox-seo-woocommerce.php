@@ -97,6 +97,8 @@ class Sox_SEO_WooCommerce {
 			$markup['description'] = $description;
 		}
 
+		$markup = self::add_policies( $markup );
+
 		/**
 		 * Filter the Product structured data.
 		 *
@@ -104,6 +106,83 @@ class Sox_SEO_WooCommerce {
 		 * @param WC_Product $product Product.
 		 */
 		return apply_filters( 'sox_seo_product_schema', $markup, $product );
+	}
+
+	/**
+	 * Add the shop's delivery and returns terms to each offer. Google shows
+	 * them in product results and asks for both in Merchant Center.
+	 *
+	 * @param array $markup Product JSON-LD.
+	 * @return array
+	 */
+	private static function add_policies( array $markup ) {
+		$o = Sox_SEO_Options::all();
+		if ( ( empty( $o['returns_enabled'] ) && empty( $o['shipping_enabled'] ) ) || empty( $markup['offers'] ) ) {
+			return $markup;
+		}
+		$country  = $o['shipping_country'] ? $o['shipping_country'] : ( function_exists( 'WC' ) ? WC()->countries->get_base_country() : '' );
+		$currency = get_woocommerce_currency();
+		$single   = isset( $markup['offers']['@type'] );
+		$offers   = $single ? array( $markup['offers'] ) : $markup['offers'];
+
+		foreach ( $offers as &$offer ) {
+			if ( ! is_array( $offer ) ) {
+				continue;
+			}
+			if ( ! empty( $o['returns_enabled'] ) && $country ) {
+				$offer['hasMerchantReturnPolicy'] = (int) $o['return_days'] > 0
+					? array(
+						'@type'                => 'MerchantReturnPolicy',
+						'applicableCountry'    => $country,
+						'returnPolicyCategory' => 'https://schema.org/MerchantReturnFiniteReturnWindow',
+						'merchantReturnDays'   => (int) $o['return_days'],
+						'returnMethod'         => 'https://schema.org/ReturnByMail',
+						'returnFees'           => 'free' === $o['return_fees'] ? 'https://schema.org/FreeReturn' : 'https://schema.org/ReturnFeesCustomerResponsibility',
+					)
+					: array(
+						'@type'                => 'MerchantReturnPolicy',
+						'applicableCountry'    => $country,
+						'returnPolicyCategory' => 'https://schema.org/MerchantReturnNotPermitted',
+					);
+			}
+			if ( ! empty( $o['shipping_enabled'] ) && $country && '' !== $o['shipping_rate'] ) {
+				$price = isset( $offer['price'] ) ? (float) $offer['price'] : null;
+				$rate  = (float) $o['shipping_rate'];
+				if ( '' !== $o['shipping_free_over'] && null !== $price && $price >= (float) $o['shipping_free_over'] ) {
+					$rate = 0.0;
+				}
+				$offer['shippingDetails'] = array(
+					'@type'               => 'OfferShippingDetails',
+					'shippingRate'        => array(
+						'@type'    => 'MonetaryAmount',
+						'value'    => wc_format_decimal( $rate, wc_get_price_decimals() ),
+						'currency' => $currency,
+					),
+					'shippingDestination' => array(
+						'@type'          => 'DefinedRegion',
+						'addressCountry' => $country,
+					),
+					'deliveryTime'        => array(
+						'@type'        => 'ShippingDeliveryTime',
+						'handlingTime' => array(
+							'@type'    => 'QuantitativeValue',
+							'minValue' => 0,
+							'maxValue' => 1,
+							'unitCode' => 'DAY',
+						),
+						'transitTime'  => array(
+							'@type'    => 'QuantitativeValue',
+							'minValue' => (int) $o['shipping_days_min'],
+							'maxValue' => (int) $o['shipping_days_max'],
+							'unitCode' => 'DAY',
+						),
+					),
+				);
+			}
+		}
+		unset( $offer );
+		$markup['offers'] = $single ? $offers[0] : $offers;
+		return $markup;
 	}
 
 	/**

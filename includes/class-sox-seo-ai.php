@@ -700,4 +700,278 @@ class Sox_SEO_AI {
 		}
 		return $faqs;
 	}
+
+	/**
+	 * Write the SEO title and description of a page in an extra language.
+	 *
+	 * @param string $kind post|term.
+	 * @param int    $id   Object ID.
+	 * @param string $lang Language slug from Sox_SEO_Lang::languages().
+	 * @return array|WP_Error {title, description}
+	 */
+	public static function lang_meta( $kind, $id, $lang ) {
+		$languages = Sox_SEO_Lang::languages();
+		if ( ! isset( $languages[ $lang ] ) ) {
+			return new WP_Error( 'sox_seo_lang', __( 'Unknown language.', 'sox-seo' ) );
+		}
+		$label = $languages[ $lang ]['label'];
+
+		if ( 'term' === $kind ) {
+			$term = get_term( $id );
+			if ( ! $term || is_wp_error( $term ) ) {
+				return new WP_Error( 'sox_seo_not_found', __( 'Term not found.', 'sox-seo' ) );
+			}
+			$title       = Sox_SEO_Meta::get_term( $id, 'title' );
+			$description = Sox_SEO_Meta::get_term( $id, 'description' );
+			$context     = "<archive>\n<name>" . $term->name . "</name>\n<description>" . wp_strip_all_tags( $term->description ) . "</description>\n</archive>";
+			$name        = $term->name;
+		} else {
+			$post = get_post( $id );
+			if ( ! $post ) {
+				return new WP_Error( 'sox_seo_not_found', __( 'Post not found.', 'sox-seo' ) );
+			}
+			$title       = Sox_SEO_Meta::get_post( $id, 'title' );
+			$description = Sox_SEO_Meta::get_post( $id, 'description' );
+			$context     = self::post_context( $post );
+			$name        = $post->post_title;
+		}
+
+		$ask  = "Write the SEO title and meta description for the {$label} version of this page.\n\n";
+		$ask .= "Do not translate word for word. Write what a native {$label} speaker would type into Google and want to click: the searches, phrasing and reasons to buy differ between languages. Keep brand names, model names and sizes exactly as they are written. Title at most 60 characters without the site name, which is added automatically; description 120 to 155 characters.\n\n";
+		$ask .= "<current_seo language=\"main site language\">\n<title>" . ( $title ? $title : $name ) . "</title>\n<description>{$description}</description>\n</current_seo>\n\n";
+		$ask .= $context;
+
+		$data = Sox_SEO_Anthropic::json(
+			self::system( $label ),
+			$ask,
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'title'       => array( 'type' => 'string' ),
+					'description' => array( 'type' => 'string' ),
+				),
+				'required'             => array( 'title', 'description' ),
+				'additionalProperties' => false,
+			)
+		);
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
+		return array(
+			'title'       => trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( (string) $data['title'] ) ) ),
+			'description' => trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( (string) $data['description'] ) ) ),
+		);
+	}
+
+	/**
+	 * Write the introduction shown on a category page.
+	 *
+	 * @param int $term_id Term ID.
+	 * @return string|WP_Error HTML.
+	 */
+	public static function term_copy( $term_id ) {
+		$term = get_term( $term_id );
+		if ( ! $term || is_wp_error( $term ) ) {
+			return new WP_Error( 'sox_seo_not_found', __( 'Term not found.', 'sox-seo' ) );
+		}
+		$taxonomy = get_taxonomy( $term->taxonomy );
+		$items    = get_posts(
+			array(
+				'post_type'      => $taxonomy ? $taxonomy->object_type : 'any',
+				'post_status'    => 'publish',
+				'posts_per_page' => 40,
+				'tax_query'      => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+					array(
+						'taxonomy' => $term->taxonomy,
+						'terms'    => $term->term_id,
+					),
+				),
+			)
+		);
+		if ( ! $items ) {
+			return new WP_Error( 'sox_seo_thin', __( 'This category has nothing in it to describe.', 'sox-seo' ) );
+		}
+		$lines = array();
+		foreach ( $items as $item ) {
+			$line = '- ' . get_the_title( $item );
+			if ( 'product' === $item->post_type && function_exists( 'wc_get_product' ) ) {
+				$product = wc_get_product( $item->ID );
+				if ( $product && $product->get_short_description() ) {
+					$line .= ': ' . wp_trim_words( wp_strip_all_tags( $product->get_short_description() ), 25 );
+				}
+			}
+			$lines[] = $line;
+		}
+		$keyword = trim( (string) strtok( Sox_SEO_Meta::get_term( $term_id, 'focus_keyword' ), ',' ) );
+
+		$ask  = "Write the introduction for this category page. It appears above or below the list of items.\n\n";
+		$ask .= "Category pages rank for the broad searches (\"above ground pools\", not one model), and a page that is only a grid of products gives a search engine little to go on. Write 120 to 200 words that help someone choose: what the range covers, how the items differ, and who each kind suits. Name real items from the list where it helps. Everything must come from the list below; if it does not say something, do not claim it. No price, since prices change.\n\n";
+		$ask .= "Format as simple HTML using only <p> and <strong>, two or three paragraphs.\n\n";
+		if ( $keyword ) {
+			$ask .= "People search for this category as \"{$keyword}\"; use that phrasing naturally.\n\n";
+		}
+		$ask .= "<category>\n<name>{$term->name}</name>\n<current_text>" . wp_strip_all_tags( $term->description ) . "</current_text>\n<items count=\"" . (int) $term->count . "\">\n" . implode( "\n", $lines ) . "\n</items>\n</category>";
+
+		$data = Sox_SEO_Anthropic::json(
+			self::system(),
+			$ask,
+			array(
+				'type'                 => 'object',
+				'properties'           => array( 'html' => array( 'type' => 'string' ) ),
+				'required'             => array( 'html' ),
+				'additionalProperties' => false,
+			)
+		);
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
+		$html = trim(
+			wp_kses(
+				preg_replace( '#<(script|style)\b[^>]*>.*?</\1>#is', '', (string) $data['html'] ),
+				array(
+					'p'      => array(),
+					'strong' => array(),
+				)
+			)
+		);
+		return '' === $html ? new WP_Error( 'sox_seo_empty', __( 'Claude returned no text.', 'sox-seo' ) ) : $html;
+	}
+
+	/**
+	 * Save a category introduction, keeping the previous text in term meta.
+	 *
+	 * @param int    $term_id Term ID.
+	 * @param string $html    Introduction HTML.
+	 * @return true|WP_Error
+	 */
+	public static function apply_term_copy( $term_id, $html ) {
+		$term = get_term( $term_id );
+		if ( ! $term || is_wp_error( $term ) ) {
+			return new WP_Error( 'sox_seo_not_found', __( 'Term not found.', 'sox-seo' ) );
+		}
+		update_term_meta( $term_id, '_sox_seo_prev_description', wp_slash( $term->description ) );
+		// WordPress strips most HTML from term descriptions for users who
+		// may not post unfiltered HTML; paragraphs are safe to allow here.
+		remove_filter( 'pre_term_description', 'wp_filter_kses' );
+		$result = wp_update_term( $term_id, $term->taxonomy, array( 'description' => wp_slash( $html ) ) );
+		add_filter( 'pre_term_description', 'wp_filter_kses' );
+		return is_wp_error( $result ) ? $result : true;
+	}
+
+	/**
+	 * Match logged 404 URLs to the live page that best replaces each one.
+	 *
+	 * @return array|WP_Error List of {url, hits, target_id, target_kind, target_url, target_title, reason}.
+	 */
+	public static function redirect_suggestions() {
+		$missing = array_slice( Sox_SEO_Redirects::top_404(), 0, 30 );
+		if ( ! $missing ) {
+			return array();
+		}
+
+		$candidates = array();
+		$ids        = get_posts(
+			array(
+				'post_type'      => Sox_SEO_Meta::post_types(),
+				'post_status'    => 'publish',
+				'posts_per_page' => 600,
+				'fields'         => 'ids',
+				'orderby'        => 'modified',
+				'post__not_in'   => Sox_SEO_Meta::utility_page_ids(), // phpcs:ignore WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_post__not_in
+			)
+		);
+		foreach ( $ids as $id ) {
+			$candidates[ 'p' . $id ] = array(
+				'url'   => get_permalink( $id ),
+				'title' => wp_strip_all_tags( get_the_title( $id ) ),
+			);
+		}
+		foreach ( array( 'product_cat', 'category' ) as $taxonomy ) {
+			if ( ! taxonomy_exists( $taxonomy ) ) {
+				continue;
+			}
+			$terms = get_terms(
+				array(
+					'taxonomy'   => $taxonomy,
+					'hide_empty' => true,
+				)
+			);
+			foreach ( is_wp_error( $terms ) ? array() : $terms as $term ) {
+				$link = get_term_link( $term );
+				if ( ! is_wp_error( $link ) ) {
+					$candidates[ 't' . $term->term_id ] = array(
+						'url'   => $link,
+						'title' => $term->name . ' (category)',
+					);
+				}
+			}
+		}
+
+		$broken = array();
+		foreach ( $missing as $row ) {
+			$broken[] = $row->url . ' | hits ' . (int) $row->hits;
+		}
+		$pages = array();
+		foreach ( $candidates as $key => $candidate ) {
+			$pages[] = $key . ' | ' . wp_parse_url( $candidate['url'], PHP_URL_PATH ) . ' | ' . $candidate['title'];
+		}
+
+		$ask  = "These addresses on the site return \"page not found\". For each, choose the live page a visitor was most likely looking for, so a redirect can send them there and keep whatever ranking the old address had.\n\n";
+		$ask .= "A redirect only helps when the target truly replaces the old page: the same product, its successor, or the category it belonged to. Sending unrelated addresses to a loosely related page, or everything to the home page, is treated by Google as a soft error and helps nobody. So when nothing fits, or the address is clearly a bot probe or junk, leave `target` empty.\n\n";
+		$ask .= "<not_found>\n" . implode( "\n", $broken ) . "\n</not_found>\n\n";
+		$ask .= "<live_pages format=\"key | path | title\">\n" . implode( "\n", $pages ) . "\n</live_pages>";
+
+		$data = Sox_SEO_Anthropic::json(
+			self::system(),
+			$ask,
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'redirects' => array(
+						'type'  => 'array',
+						'items' => array(
+							'type'                 => 'object',
+							'properties'           => array(
+								'url'    => array( 'type' => 'string' ),
+								'target' => array(
+									'type'        => 'string',
+									'description' => 'Key of the live page, or an empty string when nothing fits.',
+								),
+								'reason' => array( 'type' => 'string' ),
+							),
+							'required'             => array( 'url', 'target', 'reason' ),
+							'additionalProperties' => false,
+						),
+					),
+				),
+				'required'             => array( 'redirects' ),
+				'additionalProperties' => false,
+			)
+		);
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
+
+		$hits = array();
+		foreach ( $missing as $row ) {
+			$hits[ $row->url ] = (int) $row->hits;
+		}
+		$out = array();
+		foreach ( (array) $data['redirects'] as $item ) {
+			$url    = (string) $item['url'];
+			$target = (string) $item['target'];
+			// Only addresses that were asked about, pointing at real candidates.
+			if ( ! isset( $hits[ $url ] ) || ! isset( $candidates[ $target ] ) ) {
+				continue;
+			}
+			$out[] = array(
+				'url'          => $url,
+				'hits'         => $hits[ $url ],
+				'target_url'   => $candidates[ $target ]['url'],
+				'target_title' => $candidates[ $target ]['title'],
+				'reason'       => sanitize_text_field( (string) $item['reason'] ),
+			);
+		}
+		return $out;
+	}
 }

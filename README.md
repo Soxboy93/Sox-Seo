@@ -14,6 +14,9 @@ It covers the feature set people install Rank Math, Yoast SEO, All in One SEO an
 | **AI content audit** | Claude reviews a page against its focus keyword and lists specific fixes (missing subtopics, thin sections, slow intro), ranked by priority. Nothing is rewritten for you. |
 | **AI product descriptions** | Claude writes a product's short and full description from its attributes. Preview and edit before saving; the previous text is kept. Bulk mode fills in missing short descriptions only. |
 | **Google Search Console** | Connect once and Claude is given the real searches each page appears for when it writes titles and audits content. A Search Performance screen lists pages that are close to ranking higher. |
+| **Second-language SEO** | On TranslatePress sites, every page and category gets an extra SEO title and description per language, written by Claude as a native speaker would search, plus a sitemap of the translated URLs. |
+| **Category introductions** | Claude writes a short buying guide for each category from the items in it. Preview on the category screen, or fill all empty categories in bulk. |
+| **Smart 404 fixes** | Claude matches logged 404 addresses to the live page that truly replaces each one and proposes the redirects; junk and bot probes are left alone. |
 | **Autopilot** | Hourly background job that works through everything still missing SEO data, capped by a daily limit so API spend stays predictable. |
 | **On-page check** | A 0–100 score with a checklist per page (lengths, keyword placement, density, alt text, links). Runs locally, no API cost. Shown in the editor and as a column in post lists. |
 | **Meta tags** | Title templates, meta description, canonical URL, robots (noindex per page, search results, cart/checkout/account), Open Graph and X/Twitter cards, product price tags. |
@@ -25,9 +28,15 @@ It covers the feature set people install Rank Math, Yoast SEO, All in One SEO an
 | **Sitemap & robots.txt** | Cleans WordPress's built-in `/wp-sitemap.xml` (drops noindexed pages and author archives) and keeps crawlers out of WooCommerce sort/filter URLs. |
 | **Images** | Images with no alt text fall back to the page or product title. New JPEG uploads can be converted to WebP, compression quality is adjustable, and camera-style file names (`IMG_4471.jpg`) are renamed after the page they are uploaded to. |
 | **Links** | Optional `target="_blank"` / `rel="nofollow"` on external links. Internal links can be inserted into Elementor Text Editor widgets as well as normal content. |
-| **Link audit** | Scans every page for broken links and for pages nothing links to. Claude then favours those unlinked pages when suggesting internal links. |
+| **Link audit** | Scans every page for broken links and for pages nothing links to, on demand or weekly in the background. Claude then favours those unlinked pages when suggesting internal links. |
 | **IndexNow** | Tells Bing, Yandex and other IndexNow engines the moment a page changes. |
 | **AI assistants** | Publishes `/llms.txt`, and can ask AI companies not to train on the site via robots.txt. |
+| **Shipping & returns schema** | Delivery cost, delivery time and returns policy on every product offer, as Google asks for in product results. |
+| **Barcode import** | Upload a CSV of SKU and GTIN; each barcode's check digit is verified before saving. |
+| **Bulk editor** | One table to edit every title, description and focus keyword, including the second-language ones. |
+| **Speed report** | Google PageSpeed test of one page per template, with the biggest savings listed. |
+| **Ranking history** | A weekly Search Console snapshot, showing clicks, impressions and position week by week and the pages that moved most. |
+| **Leftover cleanup** | Removes tables, fields and settings left by SEO plugins you no longer use. Refuses to touch a plugin that is active. |
 | **Product feed check** | Lists products missing what Google Merchant Center asks for: image, price, description, brand, GTIN. |
 | **Import** | Copies titles, descriptions, keywords and canonicals from Rank Math, Yoast SEO or SEOPress. |
 | **Weekly report** | E-mail summary of what Claude wrote, what is still missing, new 404s, broken links and search clicks. |
@@ -65,7 +74,19 @@ If your property is a domain property, enter it as `sc-domain:example.com` in th
 
 ## Multilingual sites
 
-On a site using Polylang or WPML, Claude writes each page's SEO text in that page's own language. The `hreflang` tags that tie language versions together are printed by Polylang, WPML and TranslatePress themselves, so this plugin does not print a second set.
+**TranslatePress** serves every language from the same page, so Sox SEO adds a title and description field per extra language to each page and category, a per-language site name for titles, and a sitemap section for the translated URLs. Claude writes these fields from the editor or in bulk.
+
+**Polylang and WPML** keep each language as its own page, so the normal fields already cover them; Claude writes each page's SEO text in that page's own language.
+
+The `hreflang` tags that tie language versions together are printed by all three translation plugins themselves, so this plugin does not print a second set.
+
+## Switching from another SEO plugin
+
+1. With the old plugin still active, install Sox SEO and run **Tools → Import** for it (and for any older plugin whose data is still in the database).
+2. Deactivate the old plugin. Sox SEO takes over the meta tags, schema and sitemap.
+3. Submit `/wp-sitemap.xml` in Search Console.
+
+Code written against Rank Math's filters (`rank_math/frontend/title` and the description, canonical, Open Graph and product-schema equivalents) keeps running: Sox SEO passes its values through those filters when anything is hooked to them. New code should use the `sox_seo_*` filters.
 
 ## Models and cost
 
@@ -89,3 +110,6 @@ Page text, product details and images are sent to the Anthropic API when an AI f
 
 - `sox_seo_post_types` — post types the plugin manages.
 - `sox_seo_schema_graph` — the JSON-LD graph before output.
+- `sox_seo_title`, `sox_seo_description`, `sox_seo_canonical` — head values.
+- `sox_seo_og_title`, `sox_seo_og_description`, `sox_seo_og_locale` — social values.
+- `sox_seo_product_schema` — WooCommerce Product JSON-LD.

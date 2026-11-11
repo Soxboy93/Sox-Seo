@@ -85,6 +85,25 @@ class Sox_SEO_Rest {
 				'args'                => $post_arg,
 			)
 		);
+		$manage = array(
+			'lang-meta'       => 'lang_meta',
+			'term-copy'       => 'term_copy',
+			'redirects/suggest' => 'redirects_suggest',
+			'redirects/apply' => 'redirects_apply',
+			'speed'           => 'speed',
+			'bulk-edit'       => 'bulk_edit',
+		);
+		foreach ( $manage as $route => $callback ) {
+			register_rest_route(
+				self::NS,
+				'/' . $route,
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( __CLASS__, $callback ),
+					'permission_callback' => array( __CLASS__, in_array( $route, array( 'lang-meta', 'term-copy', 'bulk-edit' ), true ) ? 'can_edit_content' : 'can_manage' ),
+				)
+			);
+		}
 		register_rest_route(
 			self::NS,
 			'/link-audit',
@@ -143,6 +162,16 @@ class Sox_SEO_Rest {
 	 */
 	public static function can_edit_term( $request ) {
 		return current_user_can( 'edit_term', (int) $request['term_id'] );
+	}
+
+	/**
+	 * Routes that take a post or a term: each handler checks the specific
+	 * object before changing it.
+	 *
+	 * @return bool
+	 */
+	public static function can_edit_content() {
+		return current_user_can( 'edit_posts' );
 	}
 
 	/**
@@ -278,6 +307,114 @@ class Sox_SEO_Rest {
 	}
 
 	/**
+	 * Generate, and optionally save, SEO text in an extra language.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public static function lang_meta( $request ) {
+		$kind = 'term' === $request['kind'] ? 'term' : 'post';
+		$id   = (int) $request['id'];
+		$lang = sanitize_key( (string) $request['lang'] );
+		if ( ! current_user_can( 'term' === $kind ? 'edit_term' : 'edit_post', $id ) ) {
+			return new WP_Error( 'rest_forbidden', __( 'You are not allowed to edit this.', 'sox-seo' ), array( 'status' => 403 ) );
+		}
+		return Sox_SEO_AI::lang_meta( $kind, $id, $lang );
+	}
+
+	/**
+	 * Generate a category introduction, or save one.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public static function term_copy( $request ) {
+		$term_id = (int) $request['term_id'];
+		if ( ! current_user_can( 'edit_term', $term_id ) ) {
+			return new WP_Error( 'rest_forbidden', __( 'You are not allowed to edit this.', 'sox-seo' ), array( 'status' => 403 ) );
+		}
+		if ( null !== $request['html'] ) {
+			$html   = trim( wp_kses( (string) $request['html'], array( 'p' => array(), 'strong' => array() ) ) );
+			$result = Sox_SEO_AI::apply_term_copy( $term_id, $html );
+			return is_wp_error( $result ) ? $result : array( 'saved' => true );
+		}
+		$html = Sox_SEO_AI::term_copy( $term_id );
+		return is_wp_error( $html ) ? $html : array( 'html' => $html );
+	}
+
+	/**
+	 * @return array|WP_Error
+	 */
+	public static function redirects_suggest() {
+		$suggestions = Sox_SEO_AI::redirect_suggestions();
+		return is_wp_error( $suggestions ) ? $suggestions : array( 'redirects' => $suggestions );
+	}
+
+	/**
+	 * @param WP_REST_Request $request Request.
+	 * @return array
+	 */
+	public static function redirects_apply( $request ) {
+		$added = 0;
+		foreach ( (array) $request['redirects'] as $item ) {
+			if ( ! is_array( $item ) || empty( $item['url'] ) || empty( $item['target_url'] ) ) {
+				continue;
+			}
+			$target = esc_url_raw( (string) $item['target_url'] );
+			// Suggestions only ever point at this site.
+			if ( wp_parse_url( $target, PHP_URL_HOST ) !== wp_parse_url( home_url(), PHP_URL_HOST ) ) {
+				continue;
+			}
+			if ( true === Sox_SEO_Redirects::add( sanitize_text_field( (string) $item['url'] ), $target ) ) {
+				$added++;
+			}
+		}
+		return array( 'added' => $added );
+	}
+
+	/**
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public static function speed( $request ) {
+		$result = Sox_SEO_Speed::test( (string) $request['url'] );
+		return is_wp_error( $result ) ? new WP_Error( $result->get_error_code(), $result->get_error_message(), array( 'status' => 400 ) ) : $result;
+	}
+
+	/**
+	 * Save edited rows from the bulk editor.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array
+	 */
+	public static function bulk_edit( $request ) {
+		$saved = 0;
+		foreach ( (array) $request['rows'] as $row ) {
+			$id = is_array( $row ) && isset( $row['id'] ) ? (int) $row['id'] : 0;
+			if ( ! $id || ! current_user_can( 'edit_post', $id ) || ! Sox_SEO_Meta::is_supported( 'post' ) ) {
+				continue;
+			}
+			foreach ( array( 'title', 'focus_keyword' ) as $field ) {
+				if ( isset( $row[ $field ] ) ) {
+					Sox_SEO_Meta::set_post( $id, $field, sanitize_text_field( (string) $row[ $field ] ) );
+				}
+			}
+			if ( isset( $row['description'] ) ) {
+				Sox_SEO_Meta::set_post( $id, 'description', sanitize_textarea_field( (string) $row['description'] ) );
+			}
+			foreach ( (array) ( isset( $row['lang'] ) ? $row['lang'] : array() ) as $lang => $fields ) {
+				foreach ( array( 'title', 'description' ) as $field ) {
+					if ( isset( $fields[ $field ] ) ) {
+						Sox_SEO_Lang::set( 'post', $id, $field, sanitize_key( $lang ), sanitize_textarea_field( (string) $fields[ $field ] ) );
+					}
+				}
+			}
+			$saved++;
+		}
+		return array( 'saved' => $saved );
+	}
+
+	/**
 	 * @param WP_REST_Request $request Request.
 	 * @return array
 	 */
@@ -307,9 +444,12 @@ class Sox_SEO_Rest {
 	 * @return array|WP_Error
 	 */
 	public static function bulk( $request ) {
-		$task      = in_array( $request['task'], array( 'alt', 'product_copy' ), true ) ? $request['task'] : 'meta';
+		$task      = in_array( $request['task'], array( 'alt', 'product_copy', 'lang_meta', 'term_copy' ), true ) ? $request['task'] : 'meta';
 		$post_type = sanitize_key( (string) $request['post_type'] );
 		$exclude   = array_map( 'absint', (array) $request['exclude'] );
+		if ( 'lang_meta' === $task || 'term_copy' === $task ) {
+			return self::bulk_extra( $task, sanitize_key( (string) $request['lang'] ), $exclude );
+		}
 
 		if ( 'meta' === $task ) {
 			if ( ! Sox_SEO_Meta::is_supported( 'post' ) ) {
@@ -363,6 +503,70 @@ class Sox_SEO_Rest {
 			'output'    => $output,
 			'error'     => $error,
 			'remaining' => Sox_SEO_Automation::remaining( $task, $post_type ),
+		);
+	}
+
+	/**
+	 * Bulk steps for second-language meta and category introductions.
+	 *
+	 * @param string $task    lang_meta|term_copy.
+	 * @param string $lang    Language slug, for lang_meta.
+	 * @param int[]  $exclude IDs that failed earlier in this run.
+	 * @return array|WP_Error
+	 */
+	private static function bulk_extra( $task, $lang, array $exclude ) {
+		if ( 'lang_meta' === $task ) {
+			$query = Sox_SEO_Lang::missing_query( $lang, 1, $exclude );
+			$ids   = $query->posts;
+		} else {
+			$ids = Sox_SEO_Automation::terms_without_copy( 1, $exclude );
+		}
+		if ( ! $ids ) {
+			return array(
+				'done'      => true,
+				'remaining' => 0,
+			);
+		}
+		$id = (int) $ids[0];
+
+		if ( 'lang_meta' === $task ) {
+			$result = Sox_SEO_AI::lang_meta( 'post', $id, $lang );
+			if ( ! is_wp_error( $result ) && '' !== $result['description'] ) {
+				Sox_SEO_Lang::set( 'post', $id, 'title', $lang, $result['title'] );
+				Sox_SEO_Lang::set( 'post', $id, 'description', $lang, $result['description'] );
+			}
+			$output    = is_wp_error( $result ) ? '' : $result['title'] . ' — ' . $result['description'];
+			$title     = wp_strip_all_tags( get_the_title( $id ) );
+			$edit      = get_edit_post_link( $id, 'raw' );
+			$remaining = Sox_SEO_Lang::missing_query( $lang, 1 )->found_posts;
+		} else {
+			$term   = get_term( $id );
+			$result = Sox_SEO_AI::term_copy( $id );
+			if ( ! is_wp_error( $result ) ) {
+				$saved  = Sox_SEO_AI::apply_term_copy( $id, $result );
+				$result = is_wp_error( $saved ) ? $saved : $result;
+			}
+			$output    = is_wp_error( $result ) ? '' : wp_trim_words( wp_strip_all_tags( $result ), 30 );
+			$title     = $term && ! is_wp_error( $term ) ? $term->name : '#' . $id;
+			$edit      = $term && ! is_wp_error( $term ) ? get_edit_term_link( $term ) : '';
+			$remaining = count( Sox_SEO_Automation::terms_without_copy( 500 ) );
+		}
+
+		$error = is_wp_error( $result ) ? $result->get_error_message() : '';
+		if ( is_wp_error( $result ) && in_array( $result->get_error_code(), array( 'sox_seo_no_key', 'sox_seo_api_401', 'sox_seo_api_403', 'sox_seo_lang' ), true ) ) {
+			return new WP_Error( $result->get_error_code(), $error, array( 'status' => 400 ) );
+		}
+		if ( '' === $error && '' === $output ) {
+			$error = __( 'Claude returned nothing usable for this item.', 'sox-seo' );
+		}
+		return array(
+			'done'      => false,
+			'id'        => $id,
+			'title'     => $title,
+			'edit_link' => $edit,
+			'output'    => $output,
+			'error'     => $error,
+			'remaining' => (int) $remaining,
 		);
 	}
 

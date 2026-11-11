@@ -296,6 +296,55 @@ class Sox_SEO_GSC {
 	}
 
 	/**
+	 * Record this week's totals and each top page's position, so progress
+	 * can be seen over time. Search Console itself keeps 16 months but shows
+	 * no per-page history side by side.
+	 *
+	 * @return array|WP_Error The snapshot.
+	 */
+	public static function snapshot() {
+		$pages = self::top_pages( 200, true );
+		if ( is_wp_error( $pages ) ) {
+			return $pages;
+		}
+		$clicks      = 0;
+		$impressions = 0;
+		$weighted    = 0.0;
+		$top         = array();
+		foreach ( $pages as $page ) {
+			$clicks      += $page['clicks'];
+			$impressions += $page['impressions'];
+			$weighted    += $page['position'] * $page['impressions'];
+			if ( count( $top ) < 100 ) {
+				$top[ $page['page'] ] = array( $page['clicks'], $page['impressions'], $page['position'] );
+			}
+		}
+		$snapshot = array(
+			'date'        => gmdate( 'Y-m-d' ),
+			'clicks'      => $clicks,
+			'impressions' => $impressions,
+			'position'    => $impressions ? round( $weighted / $impressions, 1 ) : 0,
+			'pages'       => $top,
+		);
+		$history = self::history();
+		// One snapshot per day at most.
+		if ( $history && end( $history )['date'] === $snapshot['date'] ) {
+			array_pop( $history );
+		}
+		$history[] = $snapshot;
+		update_option( 'sox_seo_gsc_history', array_slice( $history, -26 ), false );
+		return $snapshot;
+	}
+
+	/**
+	 * @return array Snapshots, oldest first.
+	 */
+	public static function history() {
+		$history = get_option( 'sox_seo_gsc_history', array() );
+		return is_array( $history ) ? array_values( $history ) : array();
+	}
+
+	/**
 	 * Save or clear the service-account key from the settings form.
 	 *
 	 * @param string $raw Pasted JSON, 'delete', or empty to keep.

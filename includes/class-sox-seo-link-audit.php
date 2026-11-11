@@ -14,6 +14,34 @@ class Sox_SEO_Link_Audit {
 
 	const OPTION        = 'sox_seo_link_audit';
 	const POSTS_PER_RUN = 3;
+	const CRON_HOOK     = 'sox_seo_link_audit_cron';
+
+	public static function init() {
+		add_action( self::CRON_HOOK, array( __CLASS__, 'cron' ) );
+		$scheduled = wp_next_scheduled( self::CRON_HOOK, array( 'start' ) );
+		if ( Sox_SEO_Options::get( 'auto_link_audit' ) && ! $scheduled ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'weekly', self::CRON_HOOK, array( 'start' ) );
+		} elseif ( ! Sox_SEO_Options::get( 'auto_link_audit' ) && $scheduled ) {
+			wp_clear_scheduled_hook( self::CRON_HOOK, array( 'start' ) );
+		}
+	}
+
+	/**
+	 * Weekly background scan. Works for about half a minute, then hands the
+	 * rest to a follow-up run, so it never ties up the server.
+	 *
+	 * @param string $mode start|continue.
+	 */
+	public static function cron( $mode = 'start' ) {
+		$deadline = time() + 30;
+		$result   = self::step( 'start' === $mode );
+		while ( ! $result['done'] && time() < $deadline ) {
+			$result = self::step();
+		}
+		if ( ! $result['done'] ) {
+			wp_schedule_single_event( time() + 2 * MINUTE_IN_SECONDS, self::CRON_HOOK, array( 'continue' ) );
+		}
+	}
 
 	/**
 	 * @return array Scan state and results.

@@ -82,6 +82,23 @@ class Sox_SEO_Frontend {
 	}
 
 	/**
+	 * Title or description written for an extra language, for the page
+	 * being viewed.
+	 *
+	 * @param string $field title|description.
+	 * @param string $lang  Language slug.
+	 * @return string
+	 */
+	private static function lang_field( $field, $lang ) {
+		$post = self::current_post();
+		if ( $post ) {
+			return Sox_SEO_Lang::get_post( $post->ID, $field, $lang );
+		}
+		$term = self::current_term();
+		return $term ? Sox_SEO_Lang::get_term( $term->term_id, $field, $lang ) : '';
+	}
+
+	/**
 	 * Expand %placeholders% in a title template.
 	 *
 	 * @param string $template Template.
@@ -115,8 +132,20 @@ class Sox_SEO_Frontend {
 		$sep   = Sox_SEO_Options::get( 'separator' );
 		$paged = max( (int) get_query_var( 'paged' ), (int) get_query_var( 'page' ) );
 		$out   = '';
+		$lang  = Sox_SEO_Lang::current();
+		$local = $lang ? self::lang_field( 'title', $lang ) : '';
 
-		if ( is_front_page() && Sox_SEO_Options::get( 'home_title' ) ) {
+		if ( '' !== $local ) {
+			// A title written for this language, with the site's name in it.
+			$out = self::expand(
+				self::current_term() ? Sox_SEO_Options::get( 'title_term' ) : Sox_SEO_Options::get( 'title_single' ),
+				array(
+					'%title%'    => $local,
+					'%term%'     => $local,
+					'%sitename%' => Sox_SEO_Lang::site_name( $lang ),
+				)
+			);
+		} elseif ( is_front_page() && Sox_SEO_Options::get( 'home_title' ) ) {
 			$out = self::expand( Sox_SEO_Options::get( 'home_title' ) );
 		} elseif ( $post = self::current_post() ) { // phpcs:ignore
 			$custom = Sox_SEO_Meta::get_post( $post->ID, 'title' );
@@ -153,8 +182,11 @@ class Sox_SEO_Frontend {
 	 * @return string
 	 */
 	public static function description() {
-		$out = '';
-		if ( is_front_page() && Sox_SEO_Options::get( 'home_description' ) ) {
+		$out  = '';
+		$lang = Sox_SEO_Lang::current();
+		if ( $lang && '' !== self::lang_field( 'description', $lang ) ) {
+			$out = self::lang_field( 'description', $lang );
+		} elseif ( is_front_page() && Sox_SEO_Options::get( 'home_description' ) ) {
 			$out = Sox_SEO_Options::get( 'home_description' );
 		} elseif ( $post = self::current_post() ) { // phpcs:ignore
 			$out = Sox_SEO_Meta::get_post( $post->ID, 'description' );
@@ -346,7 +378,7 @@ class Sox_SEO_Frontend {
 		$social_description = (string) apply_filters( 'sox_seo_og_description', '' !== $social_description ? $social_description : $description );
 
 		$og = array(
-			'og:locale'      => (string) apply_filters( 'sox_seo_og_locale', get_locale() ),
+			'og:locale'      => (string) apply_filters( 'sox_seo_og_locale', Sox_SEO_Lang::current() ? Sox_SEO_Lang::languages()[ Sox_SEO_Lang::current() ]['locale'] : get_locale() ),
 			'og:type'        => $type,
 			'og:title'       => $social_title,
 			'og:description' => $social_description,

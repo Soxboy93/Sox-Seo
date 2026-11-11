@@ -318,6 +318,203 @@
 		} );
 	}
 
+	/* ---- Second-language fields (posts and terms) ------------------------ */
+
+	function initLang() {
+		$$( '.sox-seo-lang' ).forEach( ( section ) => {
+			const button = $( '.sox-seo-generate-lang', section );
+			if ( ! button ) {
+				return;
+			}
+			const status = $( '.sox-seo-status', section );
+			button.addEventListener( 'click', () =>
+				withButton( button, status, () =>
+					api( '/lang-meta', {
+						kind: section.dataset.kind,
+						id: parseInt( section.dataset.id, 10 ),
+						lang: section.dataset.lang,
+					} ).then( ( meta ) => {
+						$( '.sox-seo-lang-title', section ).value = meta.title;
+						$( '.sox-seo-lang-description', section ).value = meta.description;
+						setStatus( status, t.filled );
+					} )
+				)
+			);
+		} );
+	}
+
+	/* ---- Category introduction ------------------------------------------- */
+
+	function initTermCopy() {
+		const row = $( '.sox-seo-term' );
+		const button = row && $( '.sox-seo-term-copy', row );
+		if ( ! button ) {
+			return;
+		}
+		const status = $( '.sox-seo-term-status', row );
+		const results = $( '.sox-seo-term-copy-results', row );
+		const termId = parseInt( row.dataset.term, 10 );
+		button.addEventListener( 'click', () =>
+			withButton( button, status, () =>
+				api( '/term-copy', { term_id: termId } ).then( ( response ) => {
+					setStatus( status, '' );
+					results.textContent = '';
+					const area = el( 'textarea' );
+					area.rows = 10;
+					area.value = response.html;
+					const save = el( 'button', 'button button-primary', t.saveText );
+					save.type = 'button';
+					save.addEventListener( 'click', () =>
+						withButton( save, status, () =>
+							api( '/term-copy', { term_id: termId, html: area.value } ).then( () => {
+								setStatus( status, t.textSaved );
+								results.textContent = '';
+							} )
+						)
+					);
+					results.append( area, el( 'p' ), save );
+				} )
+			)
+		);
+	}
+
+	/* ---- Redirect suggestions for 404s ----------------------------------- */
+
+	function initRedirectSuggest() {
+		const button = $( '#sox-seo-suggest-redirects' );
+		if ( ! button ) {
+			return;
+		}
+		const status = $( '#sox-seo-suggest-status' );
+		const results = $( '#sox-seo-suggest-results' );
+		button.addEventListener( 'click', () =>
+			withButton( button, status, () =>
+				api( '/redirects/suggest' ).then( ( response ) => {
+					results.textContent = '';
+					if ( ! response.redirects.length ) {
+						setStatus( status, t.noRedirects );
+						return;
+					}
+					setStatus( status, '' );
+					const list = el( 'ul', 'sox-seo-suggestions' );
+					response.redirects.forEach( ( item, index ) => {
+						const row = el( 'li' );
+						const label = el( 'label' );
+						const check = el( 'input' );
+						check.type = 'checkbox';
+						check.checked = true;
+						check.value = String( index );
+						label.append( check, ' ', el( 'code', '', item.url ), ' → ', el( 'strong', '', item.target_title ), el( 'span', 'sox-seo-muted', ' — ' + item.reason ) );
+						row.append( label );
+						list.append( row );
+					} );
+					const apply = el( 'button', 'button', t.addRedirects );
+					apply.type = 'button';
+					apply.addEventListener( 'click', () => {
+						const chosen = $$( 'input:checked', list ).map( ( input ) => response.redirects[ parseInt( input.value, 10 ) ] );
+						withButton( apply, status, () =>
+							api( '/redirects/apply', { redirects: chosen } ).then( ( result ) => {
+								setStatus( status, t.redirectsAdded.replace( '%d', result.added ) );
+								window.location.reload();
+							} )
+						);
+					} );
+					results.append( list, apply );
+				} )
+			)
+		);
+	}
+
+	/* ---- Speed report ---------------------------------------------------- */
+
+	function initSpeed() {
+		const table = $( '.sox-seo-speed' );
+		if ( ! table ) {
+			return;
+		}
+		const run = ( url, button, status ) =>
+			withButton( button, status, () => {
+				setStatus( status, t.testing );
+				return api( '/speed', { url } ).then( () => window.location.reload() );
+			} );
+		$$( '.sox-seo-speed-test', table ).forEach( ( button ) => {
+			const row = button.closest( 'tr' );
+			button.addEventListener( 'click', () => run( row.dataset.url, button, $( '.sox-seo-status', row ) ) );
+		} );
+		const custom = $( '#sox-seo-speed-custom' );
+		custom.addEventListener( 'click', () => {
+			const url = $( '#sox-seo-speed-url' ).value.trim();
+			if ( url ) {
+				let status = custom.nextElementSibling;
+				if ( ! status ) {
+					status = el( 'span', 'sox-seo-status' );
+					custom.after( status );
+				}
+				run( url, custom, status );
+			}
+		} );
+	}
+
+	/* ---- Bulk editor: only rows that were changed are sent -------------- */
+
+	function initEditor() {
+		const table = $( '.sox-seo-editor' );
+		if ( ! table ) {
+			return;
+		}
+		const status = $( '.sox-seo-editor-status' );
+		const fields = $$( 'input, textarea', table );
+		fields.forEach( ( field ) => {
+			field.dataset.original = field.value;
+		} );
+		const save = ( button ) => {
+			const rows = {};
+			fields.forEach( ( field ) => {
+				if ( field.value === field.dataset.original ) {
+					return;
+				}
+				const id = field.closest( 'tr' ).dataset.id;
+				rows[ id ] = rows[ id ] || { id: parseInt( id, 10 ) };
+				if ( field.dataset.lang ) {
+					rows[ id ].lang = rows[ id ].lang || {};
+					rows[ id ].lang[ field.dataset.lang ] = rows[ id ].lang[ field.dataset.lang ] || {};
+					rows[ id ].lang[ field.dataset.lang ][ field.dataset.field ] = field.value;
+				} else {
+					rows[ id ][ field.dataset.field ] = field.value;
+				}
+			} );
+			const list = Object.values( rows );
+			if ( ! list.length ) {
+				setStatus( status, t.noChanges );
+				return;
+			}
+			withButton( button, status, () =>
+				api( '/bulk-edit', { rows: list } ).then( ( result ) => {
+					fields.forEach( ( field ) => {
+						field.dataset.original = field.value;
+					} );
+					setStatus( status, t.rowsSaved.replace( '%d', result.saved ) );
+				} )
+			);
+		};
+		$$( '.sox-seo-editor-save' ).forEach( ( button ) => button.addEventListener( 'click', () => save( button ) ) );
+		window.addEventListener( 'beforeunload', ( event ) => {
+			if ( fields.some( ( field ) => field.value !== field.dataset.original ) ) {
+				event.preventDefault();
+			}
+		} );
+	}
+
+	function initConfirm() {
+		$$( '.sox-seo-confirm' ).forEach( ( link ) =>
+			link.addEventListener( 'click', ( event ) => {
+				if ( ! window.confirm( t.confirmDelete ) ) {
+					event.preventDefault();
+				}
+			} )
+		);
+	}
+
 	/* ---- Term editor ----------------------------------------------------- */
 
 	function initTerm() {
@@ -326,7 +523,7 @@
 		if ( ! button ) {
 			return;
 		}
-		const status = $( '.sox-seo-status', row );
+		const status = $( '.sox-seo-term-status', row );
 		button.addEventListener( 'click', () =>
 			withButton( button, status, () =>
 				api( '/term-meta', { term_id: parseInt( row.dataset.term, 10 ), apply: ! soxSeo.native } ).then( ( meta ) => {
@@ -381,6 +578,7 @@
 						result = await api( '/bulk', {
 							task: card.dataset.task,
 							post_type: type ? type.value : '',
+							lang: card.dataset.lang || '',
 							exclude,
 						} );
 					} catch ( error ) {
@@ -431,5 +629,11 @@
 		initTest();
 		initBulk();
 		initScan();
+		initLang();
+		initTermCopy();
+		initRedirectSuggest();
+		initSpeed();
+		initEditor();
+		initConfirm();
 	} );
 } )();

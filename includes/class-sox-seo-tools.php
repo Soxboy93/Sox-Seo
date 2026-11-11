@@ -14,6 +14,14 @@ class Sox_SEO_Tools {
 
 	public static function init() {
 		add_action( self::REPORT_HOOK, array( __CLASS__, 'send_report' ) );
+		add_action( 'sox_seo_gsc_snapshot', array( 'Sox_SEO_GSC', 'snapshot' ) );
+
+		$snapshot = wp_next_scheduled( 'sox_seo_gsc_snapshot' );
+		if ( Sox_SEO_GSC::is_connected() && ! $snapshot ) {
+			wp_schedule_event( time() + 10 * MINUTE_IN_SECONDS, 'weekly', 'sox_seo_gsc_snapshot' );
+		} elseif ( ! Sox_SEO_GSC::is_connected() && $snapshot ) {
+			wp_clear_scheduled_hook( 'sox_seo_gsc_snapshot' );
+		}
 
 		$scheduled = wp_next_scheduled( self::REPORT_HOOK );
 		if ( Sox_SEO_Options::get( 'weekly_report' ) && ! $scheduled ) {
@@ -290,6 +298,93 @@ class Sox_SEO_Tools {
 			}
 		}
 		return $copied;
+	}
+
+	/* ---- GTIN import ----------------------------------------------------- */
+
+	/**
+	 * Whether a number is a valid GTIN-8, UPC-12, EAN-13 or GTIN-14,
+	 * including its check digit.
+	 *
+	 * @param string $gtin Digits only.
+	 * @return bool
+	 */
+	public static function valid_gtin( $gtin ) {
+		if ( ! preg_match( '/^(\d{8}|\d{12}|\d{13}|\d{14})$/', $gtin ) ) {
+			return false;
+		}
+		$digits = array_reverse( str_split( $gtin ) );
+		$check  = (int) array_shift( $digits );
+		$sum    = 0;
+		foreach ( $digits as $i => $digit ) {
+			$sum += (int) $digit * ( 0 === $i % 2 ? 3 : 1 );
+		}
+		return ( 10 - $sum % 10 ) % 10 === $check;
+	}
+
+	/**
+	 * Set product barcodes from a CSV with two columns: SKU and GTIN.
+	 *
+	 * @param string $file Path to the uploaded CSV.
+	 * @return array|WP_Error {updated, unknown_sku, invalid, unchanged, examples}
+	 */
+	public static function import_gtins( $file ) {
+		if ( ! function_exists( 'wc_get_product_id_by_sku' ) ) {
+			return new WP_Error( 'sox_seo_gtin', __( 'WooCommerce is not active.', 'sox-seo' ) );
+		}
+		$handle = fopen( $file, 'r' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+		if ( ! $handle ) {
+			return new WP_Error( 'sox_seo_gtin', __( 'The file could not be read.', 'sox-seo' ) );
+		}
+		$result = array(
+			'updated'     => 0,
+			'unchanged'   => 0,
+			'unknown_sku' => 0,
+			'invalid'     => 0,
+			'examples'    => array(),
+		);
+		$first     = fgets( $handle );
+		$delimiter = ( false !== $first && substr_count( $first, ';' ) > substr_count( $first, ',' ) ) ? ';' : ',';
+		rewind( $handle );
+
+		while ( false !== ( $row = fgetcsv( $handle, 0, $delimiter, '"', '\\' ) ) ) { // phpcs:ignore
+			if ( count( $row ) < 2 ) {
+				continue;
+			}
+			$sku  = trim( preg_replace( '/^\xEF\xBB\xBF/', '', (string) $row[0] ) );
+			$gtin = preg_replace( '/\D/', '', (string) $row[1] );
+			if ( '' === $sku || '' === $gtin ) {
+				continue; // Header row or blank line.
+			}
+			if ( ! self::valid_gtin( $gtin ) ) {
+				$result['invalid']++;
+				if ( count( $result['examples'] ) < 5 ) {
+					$result['examples'][] = $sku . ' → ' . $row[1];
+				}
+				continue;
+			}
+			$product = wc_get_product( wc_get_product_id_by_sku( $sku ) );
+			if ( ! $product || ! method_exists( $product, 'set_global_unique_id' ) ) {
+				$result['unknown_sku']++;
+				continue;
+			}
+			if ( $product->get_global_unique_id() === $gtin ) {
+				$result['unchanged']++;
+				continue;
+			}
+			try {
+				$product->set_global_unique_id( $gtin );
+				$product->save();
+				$result['updated']++;
+			} catch ( Exception $e ) {
+				$result['invalid']++; // WooCommerce refuses a GTIN already used by another product.
+				if ( count( $result['examples'] ) < 5 ) {
+					$result['examples'][] = $sku . ' → ' . $gtin;
+				}
+			}
+		}
+		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+		return $result;
 	}
 
 	/* ---- Product feed check ---------------------------------------------- */

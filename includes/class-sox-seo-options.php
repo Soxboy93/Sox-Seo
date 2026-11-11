@@ -77,6 +77,22 @@ class Sox_SEO_Options {
 			'gsc_property'          => '',
 			'weekly_report'         => 0,
 			'report_email'          => '',
+			// Languages.
+			'lang_sitemap'          => 1,
+			'lang_sitenames'        => array(),
+			// Shipping and returns in product schema.
+			'returns_enabled'       => 0,
+			'return_days'           => 14,
+			'return_fees'           => 'customer',
+			'shipping_enabled'      => 0,
+			'shipping_rate'         => '',
+			'shipping_free_over'    => '',
+			'shipping_days_min'     => 1,
+			'shipping_days_max'     => 3,
+			'shipping_country'      => '',
+			// Maintenance.
+			'auto_link_audit'       => 0,
+			'psi_key'               => '',
 			// Local business schema.
 			'local_enabled'         => 0,
 			'local_type'            => 'LocalBusiness',
@@ -166,12 +182,16 @@ class Sox_SEO_Options {
 			'block_ai_training',
 			'weekly_report',
 			'local_enabled',
+			'lang_sitemap',
+			'returns_enabled',
+			'shipping_enabled',
+			'auto_link_audit',
 		);
 		foreach ( $checkboxes as $key ) {
 			$out[ $key ] = empty( $input[ $key ] ) ? 0 : 1;
 		}
 
-		$texts = array( 'language', 'separator', 'title_single', 'title_term', 'home_title', 'org_name', 'default_brand', 'gsc_property', 'local_type', 'local_street', 'local_city', 'local_region', 'local_postcode', 'local_country', 'local_phone', 'local_lat', 'local_lng', 'local_price_range' );
+		$texts = array( 'language', 'separator', 'title_single', 'title_term', 'home_title', 'org_name', 'default_brand', 'gsc_property', 'local_type', 'local_street', 'local_city', 'local_region', 'local_postcode', 'local_country', 'local_phone', 'local_lat', 'local_lng', 'local_price_range', 'shipping_country', 'psi_key' );
 		foreach ( $texts as $key ) {
 			$out[ $key ] = isset( $input[ $key ] ) ? sanitize_text_field( wp_unslash( $input[ $key ] ) ) : $defaults[ $key ];
 		}
@@ -197,6 +217,25 @@ class Sox_SEO_Options {
 		$limit                        = isset( $input['autopilot_daily_limit'] ) ? absint( $input['autopilot_daily_limit'] ) : $defaults['autopilot_daily_limit'];
 		$out['autopilot_daily_limit'] = max( 1, min( 500, $limit ) );
 
+		$out['return_days']       = isset( $input['return_days'] ) ? min( 365, absint( $input['return_days'] ) ) : $defaults['return_days'];
+		$out['return_fees']       = ( isset( $input['return_fees'] ) && 'free' === $input['return_fees'] ) ? 'free' : 'customer';
+		$out['shipping_days_min'] = isset( $input['shipping_days_min'] ) ? min( 60, absint( $input['shipping_days_min'] ) ) : $defaults['shipping_days_min'];
+		$out['shipping_days_max'] = isset( $input['shipping_days_max'] ) ? max( $out['shipping_days_min'], min( 90, absint( $input['shipping_days_max'] ) ) ) : $defaults['shipping_days_max'];
+		foreach ( array( 'shipping_rate', 'shipping_free_over' ) as $key ) {
+			$raw         = isset( $input[ $key ] ) ? trim( (string) wp_unslash( $input[ $key ] ) ) : '';
+			$out[ $key ] = is_numeric( $raw ) ? (string) (float) $raw : '';
+		}
+		$out['shipping_country']  = strtoupper( substr( preg_replace( '/[^A-Za-z]/', '', $out['shipping_country'] ), 0, 2 ) );
+		$out['lang_sitenames']    = array();
+		if ( isset( $input['lang_sitenames'] ) && is_array( $input['lang_sitenames'] ) ) {
+			foreach ( $input['lang_sitenames'] as $lang => $name ) {
+				$name = sanitize_text_field( wp_unslash( $name ) );
+				if ( '' !== $name ) {
+					$out['lang_sitenames'][ sanitize_key( $lang ) ] = $name;
+				}
+			}
+		}
+
 		$out['local_type']    = preg_replace( '/[^A-Za-z]/', '', $out['local_type'] );
 		$out['local_type']    = $out['local_type'] ? $out['local_type'] : 'LocalBusiness';
 		$out['report_email']  = isset( $input['report_email'] ) ? sanitize_email( wp_unslash( $input['report_email'] ) ) : '';
@@ -212,7 +251,7 @@ class Sox_SEO_Options {
 		// is active. Their values were not submitted, so keep what was saved.
 		if ( empty( $input['_native'] ) ) {
 			$current = self::all();
-			$native  = array( 'separator', 'title_single', 'title_term', 'home_title', 'home_description', 'default_og_image', 'noindex_search', 'noindex_tags', 'sitemap_no_users', 'schema_enabled', 'org_name', 'org_logo', 'org_social', 'local_enabled', 'local_type', 'local_street', 'local_city', 'local_region', 'local_postcode', 'local_country', 'local_phone', 'local_lat', 'local_lng', 'local_price_range', 'local_hours' );
+			$native  = array( 'separator', 'title_single', 'title_term', 'home_title', 'home_description', 'default_og_image', 'noindex_search', 'noindex_tags', 'sitemap_no_users', 'schema_enabled', 'org_name', 'org_logo', 'org_social', 'local_enabled', 'local_type', 'local_street', 'local_city', 'local_region', 'local_postcode', 'local_country', 'local_phone', 'local_lat', 'local_lng', 'local_price_range', 'local_hours', 'lang_sitemap', 'lang_sitenames' );
 			foreach ( $native as $key ) {
 				$out[ $key ] = $current[ $key ];
 			}

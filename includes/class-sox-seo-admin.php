@@ -82,6 +82,17 @@ class Sox_SEO_Admin {
 					'remaining'    => __( '%d remaining', 'sox-seo' ),
 					'connected'    => __( 'Connected. Claude replied successfully.', 'sox-seo' ),
 					'chars'        => __( 'characters', 'sox-seo' ),
+					'saveText'     => __( 'Save this text', 'sox-seo' ),
+					'textSaved'    => __( 'Saved. Reload the page to see it in the description box.', 'sox-seo' ),
+					'noRedirects'  => __( 'Claude found no 404 address with a page that truly replaces it.', 'sox-seo' ),
+					'addRedirects' => __( 'Create selected redirects', 'sox-seo' ),
+					/* translators: %d: number of redirects */
+					'redirectsAdded' => __( '%d redirect(s) created. Reloading…', 'sox-seo' ),
+					'testing'      => __( 'Testing… this takes up to a minute.', 'sox-seo' ),
+					/* translators: %d: number of rows */
+					'rowsSaved'    => __( '%d row(s) saved.', 'sox-seo' ),
+					'noChanges'    => __( 'Nothing was changed.', 'sox-seo' ),
+					'confirmDelete' => __( 'Permanently delete this plugin\'s leftover data? This cannot be undone.', 'sox-seo' ),
 					'noFaq'        => __( 'No question-and-answer content found on this page, so no FAQ markup was added.', 'sox-seo' ),
 					/* translators: %d: number of questions */
 					'faqSaved'     => __( '%d question(s) found and marked up as FAQ schema.', 'sox-seo' ),
@@ -337,6 +348,7 @@ class Sox_SEO_Admin {
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Weekly report', 'sox-seo' ); ?></th>
 						<td>
+							<?php self::checkbox( 'auto_link_audit', __( 'Run the link audit every week in the background', 'sox-seo' ) ); ?><br />
 							<?php self::checkbox( 'weekly_report', __( 'E-mail a weekly SEO summary', 'sox-seo' ) ); ?><br />
 							<?php
 							/* translators: %s: admin e-mail */
@@ -410,6 +422,32 @@ class Sox_SEO_Admin {
 					</tr>
 				</table>
 
+				<?php if ( Sox_SEO_Lang::languages() ) : ?>
+				<h2><?php esc_html_e( 'Languages', 'sox-seo' ); ?></h2>
+				<p><?php esc_html_e( 'TranslatePress serves each language from the same page, so every page gets an extra SEO title and description per language, in the editor. Claude can write them one at a time or in bulk.', 'sox-seo' ); ?></p>
+				<table class="form-table" role="presentation">
+					<?php $site_names = (array) Sox_SEO_Options::get( 'lang_sitenames' ); ?>
+					<?php foreach ( Sox_SEO_Lang::languages() as $lang => $language ) : ?>
+					<tr>
+						<th scope="row">
+							<?php
+							/* translators: %s: language name */
+							printf( esc_html__( 'Site name in %s', 'sox-seo' ), esc_html( $language['label'] ) );
+							?>
+						</th>
+						<td>
+							<input type="text" class="regular-text" dir="auto" name="<?php echo esc_attr( $option ); ?>[lang_sitenames][<?php echo esc_attr( $lang ); ?>]" value="<?php echo esc_attr( isset( $site_names[ $lang ] ) ? $site_names[ $lang ] : '' ); ?>" />
+							<p class="description"><?php esc_html_e( 'Used at the end of titles in this language. Leave blank to use the normal site name.', 'sox-seo' ); ?></p>
+						</td>
+					</tr>
+					<?php endforeach; ?>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Sitemap', 'sox-seo' ); ?></th>
+						<td><?php self::checkbox( 'lang_sitemap', __( 'Add the translated pages to the XML sitemap', 'sox-seo' ) ); ?></td>
+					</tr>
+				</table>
+				<?php endif; ?>
+
 				<h2><?php esc_html_e( 'Local business', 'sox-seo' ); ?></h2>
 				<p><?php esc_html_e( 'For a business with a shop, showroom or office customers can visit. Helps the site appear in Google Maps and "near me" searches. Use exactly the details shown on your Google Business Profile.', 'sox-seo' ); ?></p>
 				<table class="form-table" role="presentation">
@@ -463,6 +501,55 @@ class Sox_SEO_Admin {
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Default product brand', 'sox-seo' ); ?></th>
 						<td><?php self::text( 'default_brand', __( 'Added to product schema when a product has no brand of its own. Google asks for a brand on product results.', 'sox-seo' ) ); ?></td>
+					</tr>
+					<?php if ( class_exists( 'WooCommerce' ) ) : ?>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Returns policy', 'sox-seo' ); ?></th>
+						<td>
+							<?php self::checkbox( 'returns_enabled', __( 'Tell Google the shop\'s returns policy in product results', 'sox-seo' ) ); ?>
+							<p>
+								<label><?php esc_html_e( 'Returns accepted for', 'sox-seo' ); ?>
+									<input type="number" min="0" max="365" class="small-text" name="<?php echo esc_attr( $option ); ?>[return_days]" value="<?php echo esc_attr( (string) Sox_SEO_Options::get( 'return_days' ) ); ?>" />
+									<?php esc_html_e( 'days (0 = no returns).', 'sox-seo' ); ?>
+								</label>
+								<label><?php esc_html_e( 'Return shipping is', 'sox-seo' ); ?>
+									<select name="<?php echo esc_attr( $option ); ?>[return_fees]">
+										<option value="customer" <?php selected( Sox_SEO_Options::get( 'return_fees' ), 'customer' ); ?>><?php esc_html_e( 'paid by the customer', 'sox-seo' ); ?></option>
+										<option value="free" <?php selected( Sox_SEO_Options::get( 'return_fees' ), 'free' ); ?>><?php esc_html_e( 'free', 'sox-seo' ); ?></option>
+									</select>
+								</label>
+							</p>
+							<p class="description"><?php esc_html_e( 'Must match the returns policy published on the site.', 'sox-seo' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Delivery', 'sox-seo' ); ?></th>
+						<td>
+							<?php self::checkbox( 'shipping_enabled', __( 'Tell Google the delivery cost and time in product results', 'sox-seo' ) ); ?>
+							<p>
+								<label><?php esc_html_e( 'Delivery costs', 'sox-seo' ); ?>
+									<input type="text" class="small-text" name="<?php echo esc_attr( $option ); ?>[shipping_rate]" value="<?php echo esc_attr( (string) Sox_SEO_Options::get( 'shipping_rate' ) ); ?>" />
+									<?php echo esc_html( get_woocommerce_currency() ); ?>,
+								</label>
+								<label><?php esc_html_e( 'free for products priced at or above', 'sox-seo' ); ?>
+									<input type="text" class="small-text" name="<?php echo esc_attr( $option ); ?>[shipping_free_over]" value="<?php echo esc_attr( (string) Sox_SEO_Options::get( 'shipping_free_over' ) ); ?>" />
+								</label>
+							</p>
+							<p>
+								<label><?php esc_html_e( 'Arrives in', 'sox-seo' ); ?>
+									<input type="number" min="0" max="60" class="small-text" name="<?php echo esc_attr( $option ); ?>[shipping_days_min]" value="<?php echo esc_attr( (string) Sox_SEO_Options::get( 'shipping_days_min' ) ); ?>" />
+									<?php esc_html_e( 'to', 'sox-seo' ); ?>
+									<input type="number" min="0" max="90" class="small-text" name="<?php echo esc_attr( $option ); ?>[shipping_days_max]" value="<?php echo esc_attr( (string) Sox_SEO_Options::get( 'shipping_days_max' ) ); ?>" />
+									<?php esc_html_e( 'days, to country', 'sox-seo' ); ?>
+									<input type="text" class="small-text" maxlength="2" name="<?php echo esc_attr( $option ); ?>[shipping_country]" value="<?php echo esc_attr( (string) Sox_SEO_Options::get( 'shipping_country' ) ); ?>" placeholder="<?php echo esc_attr( WC()->countries->get_base_country() ); ?>" />
+								</label>
+							</p>
+						</td>
+					</tr>
+					<?php endif; ?>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'PageSpeed API key', 'sox-seo' ); ?></th>
+						<td><?php self::text( 'psi_key', __( 'Optional. The speed report works without one; add a Google PageSpeed Insights key only if tests are refused for quota.', 'sox-seo' ) ); ?></td>
 					</tr>
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Redirects', 'sox-seo' ); ?></th>
@@ -530,6 +617,41 @@ class Sox_SEO_Admin {
 					<ol class="sox-seo-log"></ol>
 				</div>
 				<?php endif; ?>
+
+				<?php if ( Sox_SEO_Meta::is_native() ) : ?>
+				<?php foreach ( Sox_SEO_Lang::languages() as $lang => $language ) : ?>
+				<div class="sox-seo-card" data-task="lang_meta" data-lang="<?php echo esc_attr( $lang ); ?>">
+					<h2>
+						<?php
+						/* translators: %s: language name */
+						printf( esc_html__( '%s titles & descriptions', 'sox-seo' ), esc_html( $language['label'] ) );
+						?>
+					</h2>
+					<p><?php esc_html_e( 'Claude writes the SEO title and description for this language, as a native speaker would search, not a word-for-word translation.', 'sox-seo' ); ?></p>
+					<p class="sox-seo-count">
+						<?php
+						/* translators: %s: number of pages */
+						printf( esc_html__( '%s pages have none in this language.', 'sox-seo' ), '<strong>' . esc_html( number_format_i18n( Sox_SEO_Lang::missing_query( $lang, 1 )->found_posts ) ) . '</strong>' );
+						?>
+					</p>
+					<p><button type="button" class="button button-primary sox-seo-bulk-start"><?php esc_html_e( 'Start', 'sox-seo' ); ?></button> <span class="sox-seo-status"></span></p>
+					<ol class="sox-seo-log"></ol>
+				</div>
+				<?php endforeach; ?>
+				<?php endif; ?>
+
+				<div class="sox-seo-card" data-task="term_copy">
+					<h2><?php esc_html_e( 'Category introductions', 'sox-seo' ); ?></h2>
+					<p><?php esc_html_e( 'Claude writes a short buying guide for each category that has no text of its own. To preview one first, use the button on a category\'s edit screen.', 'sox-seo' ); ?></p>
+					<p class="sox-seo-count">
+						<?php
+						/* translators: %s: number of categories */
+						printf( esc_html__( '%s categories have no introduction.', 'sox-seo' ), '<strong>' . esc_html( number_format_i18n( count( Sox_SEO_Automation::terms_without_copy( 500 ) ) ) ) . '</strong>' );
+						?>
+					</p>
+					<p><button type="button" class="button button-primary sox-seo-bulk-start"><?php esc_html_e( 'Start', 'sox-seo' ); ?></button> <span class="sox-seo-status"></span></p>
+					<ol class="sox-seo-log"></ol>
+				</div>
 
 				<div class="sox-seo-card" data-task="alt">
 					<h2><?php esc_html_e( 'Image alt text', 'sox-seo' ); ?></h2>
@@ -601,6 +723,13 @@ class Sox_SEO_Admin {
 
 			<h2><?php esc_html_e( '404 monitor', 'sox-seo' ); ?></h2>
 			<p><?php esc_html_e( 'URLs visitors and search engines asked for that do not exist. Redirect the ones that matter to the closest live page so their ranking value is not lost.', 'sox-seo' ); ?></p>
+			<?php if ( $missing && '' !== Sox_SEO_Options::api_key() ) : ?>
+				<p>
+					<button type="button" class="button button-primary" id="sox-seo-suggest-redirects"><?php esc_html_e( 'Suggest redirects with Claude', 'sox-seo' ); ?></button>
+					<span class="sox-seo-status" id="sox-seo-suggest-status"></span>
+				</p>
+				<div id="sox-seo-suggest-results"></div>
+			<?php endif; ?>
 			<table class="widefat striped">
 				<thead><tr><th><?php esc_html_e( 'URL', 'sox-seo' ); ?></th><th><?php esc_html_e( 'Hits', 'sox-seo' ); ?></th><th><?php esc_html_e( 'Last seen (UTC)', 'sox-seo' ); ?></th><th><?php esc_html_e( 'Came from', 'sox-seo' ); ?></th><th></th></tr></thead>
 				<tbody>
@@ -775,6 +904,32 @@ class Sox_SEO_Admin {
 						<input type="url" class="widefat" id="sox-seo-field-og_image" name="sox_seo[og_image]" value="<?php echo esc_attr( Sox_SEO_Meta::get_post( $post->ID, 'og_image' ) ); ?>" />
 					</p>
 				</details>
+				<?php foreach ( Sox_SEO_Lang::languages() as $lang => $language ) : ?>
+				<details class="sox-seo-advanced sox-seo-lang" data-lang="<?php echo esc_attr( $lang ); ?>" data-kind="post" data-id="<?php echo esc_attr( (string) $post->ID ); ?>" <?php echo Sox_SEO_Lang::get_post( $post->ID, 'description', $lang ) ? '' : 'open'; ?>>
+					<summary>
+						<?php
+						/* translators: %s: language name */
+						printf( esc_html__( '%s version', 'sox-seo' ), esc_html( $language['label'] ) );
+						?>
+					</summary>
+					<p>
+						<label><?php esc_html_e( 'SEO title', 'sox-seo' ); ?>
+						<input type="text" class="widefat sox-seo-lang-title" dir="auto" name="sox_seo[lang][<?php echo esc_attr( $lang ); ?>][title]" value="<?php echo esc_attr( Sox_SEO_Lang::get_post( $post->ID, 'title', $lang ) ); ?>" /></label>
+					</p>
+					<p>
+						<label><?php esc_html_e( 'Meta description', 'sox-seo' ); ?>
+						<textarea class="widefat sox-seo-lang-description" dir="auto" rows="3" name="sox_seo[lang][<?php echo esc_attr( $lang ); ?>][description]"><?php echo esc_textarea( Sox_SEO_Lang::get_post( $post->ID, 'description', $lang ) ); ?></textarea></label>
+					</p>
+					<?php if ( $has_key && $saved ) : ?>
+						<p><button type="button" class="button sox-seo-generate-lang">
+							<?php
+							/* translators: %s: language name */
+							printf( esc_html__( 'Write in %s with Claude', 'sox-seo' ), esc_html( $language['label'] ) );
+							?>
+						</button> <span class="sox-seo-status" role="status"></span></p>
+					<?php endif; ?>
+				</details>
+				<?php endforeach; ?>
 			<?php else : ?>
 				<p class="sox-seo-muted">
 					<?php
@@ -855,6 +1010,27 @@ class Sox_SEO_Admin {
 		Sox_SEO_Meta::set_post( $post_id, 'og_title', isset( $input['og_title'] ) ? sanitize_text_field( $input['og_title'] ) : '' );
 		Sox_SEO_Meta::set_post( $post_id, 'og_description', isset( $input['og_description'] ) ? sanitize_textarea_field( $input['og_description'] ) : '' );
 		Sox_SEO_Meta::set_post( $post_id, 'og_image', isset( $input['og_image'] ) ? esc_url_raw( $input['og_image'] ) : '' );
+		self::save_lang_fields( 'post', $post_id, $input );
+	}
+
+	/**
+	 * Save the per-language title and description fields.
+	 *
+	 * @param string $kind  post|term.
+	 * @param int    $id    Object ID.
+	 * @param array  $input Unslashed form input.
+	 */
+	private static function save_lang_fields( $kind, $id, array $input ) {
+		if ( empty( $input['lang'] ) || ! is_array( $input['lang'] ) ) {
+			return;
+		}
+		foreach ( $input['lang'] as $lang => $fields ) {
+			if ( ! is_array( $fields ) ) {
+				continue;
+			}
+			Sox_SEO_Lang::set( $kind, $id, 'title', sanitize_key( $lang ), isset( $fields['title'] ) ? sanitize_text_field( $fields['title'] ) : '' );
+			Sox_SEO_Lang::set( $kind, $id, 'description', sanitize_key( $lang ), isset( $fields['description'] ) ? sanitize_textarea_field( $fields['description'] ) : '' );
+		}
 	}
 
 	/* --------------------------------------------------------------------- */
@@ -889,9 +1065,36 @@ class Sox_SEO_Admin {
 					<textarea id="sox-seo-field-description" name="sox_seo[description]" rows="3"><?php echo esc_textarea( Sox_SEO_Meta::get_term( $term->term_id, 'description' ) ); ?></textarea></p>
 					<p><label><input type="checkbox" name="sox_seo[noindex]" value="1" <?php checked( Sox_SEO_Meta::get_term( $term->term_id, 'noindex' ), '1' ); ?> /> <?php esc_html_e( 'Hide this archive from search engines (noindex)', 'sox-seo' ); ?></label></p>
 					<input type="hidden" id="sox-seo-field-focus_keyword" name="sox_seo[focus_keyword]" value="<?php echo esc_attr( Sox_SEO_Meta::get_term( $term->term_id, 'focus_keyword' ) ); ?>" />
+					<?php foreach ( Sox_SEO_Lang::languages() as $lang => $language ) : ?>
+					<fieldset class="sox-seo-lang" data-lang="<?php echo esc_attr( $lang ); ?>" data-kind="term" data-id="<?php echo esc_attr( (string) $term->term_id ); ?>">
+						<legend><strong>
+							<?php
+							/* translators: %s: language name */
+							printf( esc_html__( '%s version', 'sox-seo' ), esc_html( $language['label'] ) );
+							?>
+						</strong></legend>
+						<p><label><?php esc_html_e( 'SEO title', 'sox-seo' ); ?><br />
+						<input type="text" class="sox-seo-lang-title" dir="auto" name="sox_seo[lang][<?php echo esc_attr( $lang ); ?>][title]" value="<?php echo esc_attr( Sox_SEO_Lang::get_term( $term->term_id, 'title', $lang ) ); ?>" /></label></p>
+						<p><label><?php esc_html_e( 'Meta description', 'sox-seo' ); ?><br />
+						<textarea class="sox-seo-lang-description" dir="auto" rows="3" name="sox_seo[lang][<?php echo esc_attr( $lang ); ?>][description]"><?php echo esc_textarea( Sox_SEO_Lang::get_term( $term->term_id, 'description', $lang ) ); ?></textarea></label></p>
+						<?php if ( $has_key ) : ?>
+							<p><button type="button" class="button sox-seo-generate-lang">
+								<?php
+								/* translators: %s: language name */
+								printf( esc_html__( 'Write in %s with Claude', 'sox-seo' ), esc_html( $language['label'] ) );
+								?>
+							</button> <span class="sox-seo-status" role="status"></span></p>
+						<?php endif; ?>
+					</fieldset>
+					<?php endforeach; ?>
 				<?php endif; ?>
 				<?php if ( $has_key ) : ?>
-					<p><button type="button" class="button sox-seo-generate-term"><?php esc_html_e( 'Generate with Claude', 'sox-seo' ); ?></button> <span class="sox-seo-status" role="status"></span></p>
+					<p>
+						<button type="button" class="button sox-seo-generate-term"><?php esc_html_e( 'Generate with Claude', 'sox-seo' ); ?></button>
+						<button type="button" class="button sox-seo-term-copy"><?php esc_html_e( 'Write category introduction', 'sox-seo' ); ?></button>
+						<span class="sox-seo-status sox-seo-term-status" role="status"></span>
+					</p>
+					<div class="sox-seo-term-copy-results"></div>
 				<?php endif; ?>
 			</td>
 		</tr>
@@ -917,6 +1120,7 @@ class Sox_SEO_Admin {
 		}
 		Sox_SEO_Meta::set_term( $term_id, 'description', isset( $input['description'] ) ? sanitize_textarea_field( $input['description'] ) : '' );
 		Sox_SEO_Meta::set_term( $term_id, 'noindex', empty( $input['noindex'] ) ? '' : '1' );
+		self::save_lang_fields( 'term', $term_id, $input );
 	}
 
 	/* --------------------------------------------------------------------- */

@@ -228,3 +228,55 @@
 	background: #fff;
 	white-space: pre-wrap;
 }
+
+/* Languages */
+.sox-seo-lang {
+	margin: 8px 0;
+}
+
+.sox-seo-term fieldset.sox-seo-lang {
+	padding: 8px 12px;
+	border: 1px solid #dcdcde;
+}
+
+.sox-seo-term-copy-results textarea {
+	width: 95%;
+}
+
+/* Bulk editor */
+.sox-seo-editor input[type="text"],
+.sox-seo-editor textarea {
+	display: block;
+	width: 100%;
+	margin-bottom: 4px;
+}
+
+.sox-seo-editor th:first-child {
+	width: 18%;
+}
+
+.sox-seo-editor th:nth-child(2) {
+	width: 28%;
+}
+
+.sox-seo-editor th:nth-child(4) {
+	width: 14%;
+}
+
+.sox-seo-up {
+	color: #007017;
+	font-weight: 600;
+}
+
+.sox-seo-down {
+	color: #b32d2e;
+	font-weight: 600;
+}
+
+.sox-seo-suggestions li {
+	margin-bottom: 6px;
+}
+
+.sox-seo-speed td {
+	vertical-align: top;
+}

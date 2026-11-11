@@ -166,6 +166,35 @@ class Sox_SEO_Automation {
 	}
 
 	/**
+	 * Categories that list something but have no introduction text.
+	 *
+	 * @param int   $limit   Max IDs.
+	 * @param int[] $exclude IDs to skip.
+	 * @return int[]
+	 */
+	public static function terms_without_copy( $limit = 1, array $exclude = array() ) {
+		$taxonomies = array_values( array_filter( array( 'product_cat', 'category' ), 'taxonomy_exists' ) );
+		$terms      = get_terms(
+			array(
+				'taxonomy'   => $taxonomies,
+				'hide_empty' => true,
+				'exclude'    => $exclude,
+				'fields'     => 'all',
+			)
+		);
+		$out = array();
+		foreach ( is_wp_error( $terms ) ? array() : $terms as $term ) {
+			if ( '' === trim( wp_strip_all_tags( $term->description ) ) && 'uncategorized' !== $term->slug ) {
+				$out[] = (int) $term->term_id;
+				if ( count( $out ) >= $limit ) {
+					break;
+				}
+			}
+		}
+		return $out;
+	}
+
+	/**
 	 * Count of items still missing data, for the bulk screen.
 	 *
 	 * @param string $task meta|alt|product_copy.
