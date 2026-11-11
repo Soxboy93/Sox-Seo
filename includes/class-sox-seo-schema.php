@@ -52,7 +52,7 @@ class Sox_SEO_Schema {
 		$org  = array(
 			'@type' => 'Organization',
 			'@id'   => $org_id,
-			'name'  => $name ? $name : get_bloginfo( 'name' ),
+			'name'  => $name ? $name : trim( get_bloginfo( 'name' ) ),
 			'url'   => $home,
 		);
 		$logo = Sox_SEO_Options::get( 'org_logo' );
@@ -76,8 +76,8 @@ class Sox_SEO_Schema {
 			'@type'           => 'WebSite',
 			'@id'             => $site_id,
 			'url'             => $home,
-			'name'            => get_bloginfo( 'name' ),
-			'description'     => get_bloginfo( 'description' ),
+			'name'            => trim( get_bloginfo( 'name' ) ),
+			'description'     => trim( get_bloginfo( 'description' ) ),
 			'inLanguage'      => get_bloginfo( 'language' ),
 			'publisher'       => array( '@id' => $org_id ),
 			'potentialAction' => array(

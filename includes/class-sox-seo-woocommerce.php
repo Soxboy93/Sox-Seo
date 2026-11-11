@@ -17,6 +17,35 @@ class Sox_SEO_WooCommerce {
 			return;
 		}
 		add_filter( 'woocommerce_structured_data_product', array( __CLASS__, 'product_schema' ), 20, 2 );
+		if ( Sox_SEO_Meta::is_native() ) {
+			// Just before WooCommerce prints its structured data in the footer.
+			add_action( 'wp_footer', array( __CLASS__, 'ensure_product_schema' ), 9 );
+		}
+	}
+
+	/**
+	 * Make sure a product page carries Product structured data.
+	 *
+	 * WooCommerce builds it from a hook inside its own product template.
+	 * Product pages designed in Elementor or another builder never run that
+	 * hook, so they would have no price or stock data for Google's product
+	 * results. When WooCommerce has produced none, build it here.
+	 */
+	public static function ensure_product_schema() {
+		if ( ! is_singular( 'product' ) || ! function_exists( 'WC' ) || empty( WC()->structured_data ) ) {
+			return;
+		}
+		$structured = WC()->structured_data;
+		foreach ( (array) $structured->get_data() as $item ) {
+			$type = isset( $item['@type'] ) ? $item['@type'] : '';
+			if ( 'Product' === $type || ( is_array( $type ) && in_array( 'Product', $type, true ) ) ) {
+				return; // WooCommerce already has it.
+			}
+		}
+		$product = wc_get_product( get_queried_object_id() );
+		if ( $product ) {
+			$structured->generate_product_data( $product );
+		}
 	}
 
 	/**
