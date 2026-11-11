@@ -378,6 +378,7 @@ class Sox_SEO_Admin {
 						<th scope="row"><?php esc_html_e( 'Indexing', 'sox-seo' ); ?></th>
 						<td>
 							<?php self::checkbox( 'noindex_search', __( 'Keep internal search result pages out of Google', 'sox-seo' ) ); ?><br />
+							<?php self::checkbox( 'noindex_tags', __( 'Keep tag archives (post tags and product tags) out of Google', 'sox-seo' ) ); ?><br />
 							<?php self::checkbox( 'sitemap_no_users', __( 'Leave author archives out of the XML sitemap', 'sox-seo' ) ); ?>
 							<p class="description">
 								<?php

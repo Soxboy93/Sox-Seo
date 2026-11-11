@@ -19,6 +19,7 @@ class Sox_SEO_Sitemap {
 		add_filter( 'wp_sitemaps_posts_query_args', array( __CLASS__, 'exclude_noindex_posts' ) );
 		add_filter( 'wp_sitemaps_taxonomies_query_args', array( __CLASS__, 'exclude_noindex_terms' ) );
 		add_filter( 'wp_sitemaps_add_provider', array( __CLASS__, 'providers' ), 10, 2 );
+		add_filter( 'wp_sitemaps_taxonomies', array( __CLASS__, 'taxonomies' ) );
 		add_filter( 'robots_txt', array( __CLASS__, 'robots_txt' ), 20, 2 );
 	}
 
@@ -59,6 +60,19 @@ class Sox_SEO_Sitemap {
 				'compare' => '!=',
 			),
 		);
+	}
+
+	/**
+	 * Leave tag archives out of the sitemap when they are set to noindex.
+	 *
+	 * @param WP_Taxonomy[] $taxonomies Taxonomies keyed by name.
+	 * @return WP_Taxonomy[]
+	 */
+	public static function taxonomies( $taxonomies ) {
+		if ( Sox_SEO_Options::get( 'noindex_tags' ) ) {
+			unset( $taxonomies['post_tag'], $taxonomies['product_tag'] );
+		}
+		return $taxonomies;
 	}
 
 	/**

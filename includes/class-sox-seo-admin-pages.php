@@ -229,7 +229,7 @@ class Sox_SEO_Admin_Pages {
 			<?php endif; ?>
 
 			<h2><?php esc_html_e( 'Import from another SEO plugin', 'sox-seo' ); ?></h2>
-			<p><?php esc_html_e( 'Copies SEO titles, descriptions, focus keywords and canonical URLs into Sox SEO, so nothing is lost if you switch that plugin off. The other plugin\'s data is not changed, and values you already set in Sox SEO are kept.', 'sox-seo' ); ?></p>
+			<p><?php esc_html_e( 'Copies SEO titles, descriptions, focus keywords, canonical URLs, noindex settings and social text into Sox SEO, for pages and categories, so nothing is lost if you switch that plugin off. The other plugin\'s data is not changed, and values already in Sox SEO are kept, so import your current plugin first and older ones after it.', 'sox-seo' ); ?></p>
 			<?php if ( ! Sox_SEO_Meta::is_native() ) : ?>
 				<p class="sox-seo-muted">
 					<?php

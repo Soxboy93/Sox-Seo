@@ -96,7 +96,7 @@ class Sox_SEO_Schema {
 			'@type'      => ( is_category() || is_tag() || is_tax() || is_post_type_archive() || is_home() ) ? 'CollectionPage' : 'WebPage',
 			'@id'        => $page_id,
 			'url'        => $url,
-			'name'       => wp_get_document_title(),
+			'name'       => html_entity_decode( wp_get_document_title(), ENT_QUOTES, 'UTF-8' ),
 			'isPartOf'   => array( '@id' => $site_id ),
 			'inLanguage' => get_bloginfo( 'language' ),
 		);

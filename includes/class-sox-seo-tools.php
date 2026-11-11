@@ -26,72 +26,265 @@ class Sox_SEO_Tools {
 	/* ---- Import ---------------------------------------------------------- */
 
 	/**
-	 * Meta keys used by other SEO plugins.
+	 * SEO plugins whose saved data can be imported.
 	 *
-	 * @return array<string,array{label:string,keys:array<string,string>}>
+	 * @return array<string,array{label:string}>
 	 */
 	public static function import_sources() {
 		return array(
-			'rankmath' => array(
-				'label' => 'Rank Math',
-				'keys'  => array(
-					'title'         => 'rank_math_title',
-					'description'   => 'rank_math_description',
-					'focus_keyword' => 'rank_math_focus_keyword',
-					'canonical'     => 'rank_math_canonical_url',
-				),
-			),
-			'yoast'    => array(
-				'label' => 'Yoast SEO',
-				'keys'  => array(
-					'title'         => '_yoast_wpseo_title',
-					'description'   => '_yoast_wpseo_metadesc',
-					'focus_keyword' => '_yoast_wpseo_focuskw',
-					'canonical'     => '_yoast_wpseo_canonical',
-				),
-			),
-			'seopress' => array(
-				'label' => 'SEOPress',
-				'keys'  => array(
-					'title'         => '_seopress_titles_title',
-					'description'   => '_seopress_titles_desc',
-					'focus_keyword' => '_seopress_analysis_target_kw',
-					'canonical'     => '_seopress_robots_canonical',
-				),
-			),
+			'rankmath' => array( 'label' => 'Rank Math' ),
+			'aioseo'   => array( 'label' => 'All in One SEO' ),
+			'yoast'    => array( 'label' => 'Yoast SEO' ),
+			'seopress' => array( 'label' => 'SEOPress' ),
 		);
 	}
 
 	/**
-	 * Copy titles, descriptions, keywords and canonicals from another SEO
-	 * plugin into Sox SEO's own fields. Existing Sox SEO values are kept, and
-	 * the other plugin's data is left untouched.
+	 * Turn another plugin's stored title or description into plain text.
 	 *
-	 * @param string $source rankmath|yoast|seopress.
+	 * Those plugins store templates such as "%title% %sep% %sitename%" or
+	 * "#post_title #separator_sa #site_title". Site name and separator are
+	 * added by Sox SEO's own title template, so they are removed from titles;
+	 * a value that is only a template, or that still contains a variable this
+	 * cannot resolve, returns '' and the page falls back to its default.
+	 *
+	 * @param string $value        Stored value.
+	 * @param string $object_title Post or term title.
+	 * @param string $field        title|description.
+	 * @return string
+	 */
+	public static function resolve_template( $value, $object_title, $field ) {
+		$site  = trim( get_bloginfo( 'name' ) );
+		$value = str_replace( array( '&nbsp;', "\xC2\xA0" ), ' ', (string) $value );
+		$value = html_entity_decode( $value, ENT_QUOTES, 'UTF-8' );
+
+		$site_tokens  = array( '%%sitename%%', '%sitename%', '#site_title' );
+		$sep_tokens   = array( '%%sep%%', '%sep%', '#separator_sa' );
+		$title_tokens = array( '%%title%%', '%title%', '#post_title', '%%term_title%%', '%term%', '#taxonomy_title' );
+		$body_tokens  = array( '%%excerpt%%', '%excerpt%', '%%excerpt_only%%', '%excerpt_only%', '#post_excerpt', '#post_content', '%%searchphrase%%', '%search_query%', '#search_term', '%%page%%', '%page%', '#page_number' );
+
+		if ( 'description' === $field ) {
+			// "Use the excerpt" is what Sox SEO does by default anyway.
+			foreach ( $body_tokens as $token ) {
+				if ( false !== strpos( $value, $token ) ) {
+					return '';
+				}
+			}
+			$value = str_replace( $site_tokens, $site, $value );
+			$value = str_replace( $sep_tokens, Sox_SEO_Options::get( 'separator' ), $value );
+			$value = str_replace( $title_tokens, $object_title, $value );
+		} else {
+			$value = str_replace( $body_tokens, '', $value );
+			$value = str_replace( $site_tokens, "\x01", $value );
+			$value = str_replace( $sep_tokens, "\x02", $value );
+			// Drop "<sep> <site name>" at either end, written as variables or typed out.
+			$value = preg_replace( '/^\s*\x01\s*\x02\s*|\s*\x02\s*\x01\s*$/u', '', $value );
+			$value = str_replace( array( "\x01", "\x02" ), array( $site, Sox_SEO_Options::get( 'separator' ) ), $value );
+			$value = str_replace( $title_tokens, $object_title, $value );
+			if ( '' !== $site ) {
+				$value = preg_replace( '/\s*[|\-–—·•:]\s*' . preg_quote( $site, '/' ) . '\s*$/iu', '', $value );
+			}
+		}
+
+		$value = trim( preg_replace( '/\s+/u', ' ', $value ) );
+		if ( preg_match( '/%%?[a-z_]+%%?|#[a-z]+_[a-z_]+/i', $value ) ) {
+			return ''; // A variable this importer does not know.
+		}
+		if ( 0 === strcasecmp( $value, trim( $object_title ) ) ) {
+			return ''; // Same as the page's own title: nothing custom to keep.
+		}
+		return $value;
+	}
+
+	/**
+	 * Read another plugin's saved SEO data into a common shape.
+	 *
+	 * @param string $source Source ID.
+	 * @return array{posts:array<int,array<string,string>>,terms:array<int,array<string,string>>}
+	 */
+	private static function read_source( $source ) {
+		global $wpdb;
+		$posts = array();
+		$terms = array();
+
+		$meta_maps = array(
+			'rankmath' => array(
+				'rank_math_title'                => 'title',
+				'rank_math_description'          => 'description',
+				'rank_math_focus_keyword'        => 'focus_keyword',
+				'rank_math_canonical_url'        => 'canonical',
+				'rank_math_robots'               => 'robots',
+				'rank_math_facebook_title'       => 'og_title',
+				'rank_math_facebook_description' => 'og_description',
+				'rank_math_facebook_image'       => 'og_image',
+			),
+			'yoast'    => array(
+				'_yoast_wpseo_title'                 => 'title',
+				'_yoast_wpseo_metadesc'              => 'description',
+				'_yoast_wpseo_focuskw'               => 'focus_keyword',
+				'_yoast_wpseo_canonical'             => 'canonical',
+				'_yoast_wpseo_meta-robots-noindex'   => 'robots',
+				'_yoast_wpseo_opengraph-title'       => 'og_title',
+				'_yoast_wpseo_opengraph-description' => 'og_description',
+				'_yoast_wpseo_opengraph-image'       => 'og_image',
+			),
+			'seopress' => array(
+				'_seopress_titles_title'         => 'title',
+				'_seopress_titles_desc'          => 'description',
+				'_seopress_analysis_target_kw'   => 'focus_keyword',
+				'_seopress_robots_canonical'     => 'canonical',
+				'_seopress_robots_index'         => 'robots',
+				'_seopress_social_fb_title'      => 'og_title',
+				'_seopress_social_fb_desc'       => 'og_description',
+				'_seopress_social_fb_img'        => 'og_image',
+			),
+			'aioseo'   => array(
+				'_aioseo_title'          => 'title',
+				'_aioseo_description'    => 'description',
+				'_aioseo_og_title'       => 'og_title',
+				'_aioseo_og_description' => 'og_description',
+			),
+		);
+		if ( ! isset( $meta_maps[ $source ] ) ) {
+			return compact( 'posts', 'terms' );
+		}
+		$map = $meta_maps[ $source ];
+
+		foreach ( array( 'posts' => $wpdb->postmeta, 'terms' => $wpdb->termmeta ) as $kind => $table ) {
+			$id_column    = 'posts' === $kind ? 'post_id' : 'term_id';
+			$placeholders = implode( ',', array_fill( 0, count( $map ), '%s' ) );
+			$rows         = $wpdb->get_results( $wpdb->prepare( "SELECT {$id_column} AS object_id, meta_key, meta_value FROM {$table} WHERE meta_key IN ({$placeholders}) AND meta_value <> ''", array_keys( $map ) ) ); // phpcs:ignore WordPress.DB
+			foreach ( $rows as $row ) {
+				$field = $map[ $row->meta_key ];
+				$value = (string) $row->meta_value;
+				if ( 'robots' === $field ) {
+					// Rank Math: serialized list containing "noindex". Yoast: "1". SEOPress: "yes".
+					$noindex = false !== strpos( $value, 'noindex' ) || '1' === $value || 'yes' === $value;
+					if ( ! $noindex ) {
+						continue;
+					}
+					$field = 'noindex';
+					$value = '1';
+				}
+				if ( 'posts' === $kind ) {
+					$posts[ (int) $row->object_id ][ $field ] = $value;
+				} else {
+					$terms[ (int) $row->object_id ][ $field ] = $value;
+				}
+			}
+		}
+
+		// All in One SEO 4 keeps its data in its own tables.
+		if ( 'aioseo' === $source ) {
+			$table = $wpdb->prefix . 'aioseo_posts';
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table ) { // phpcs:ignore WordPress.DB
+				$rows = $wpdb->get_results( "SELECT post_id, title, description, canonical_url, og_title, og_description, keyphrases, robots_default, robots_noindex FROM {$table}" ); // phpcs:ignore WordPress.DB
+				foreach ( $rows as $row ) {
+					$data = array(
+						'title'          => (string) $row->title,
+						'description'    => (string) $row->description,
+						'canonical'      => (string) $row->canonical_url,
+						'og_title'       => (string) $row->og_title,
+						'og_description' => (string) $row->og_description,
+					);
+					$keyphrases = json_decode( (string) $row->keyphrases, true );
+					if ( ! empty( $keyphrases['focus']['keyphrase'] ) ) {
+						$data['focus_keyword'] = (string) $keyphrases['focus']['keyphrase'];
+					}
+					if ( ! $row->robots_default && $row->robots_noindex ) {
+						$data['noindex'] = '1';
+					}
+					$posts[ (int) $row->post_id ] = array_merge( isset( $posts[ (int) $row->post_id ] ) ? $posts[ (int) $row->post_id ] : array(), array_filter( $data, 'strlen' ) );
+				}
+			}
+			$table = $wpdb->prefix . 'aioseo_terms';
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table ) { // phpcs:ignore WordPress.DB
+				$rows = $wpdb->get_results( "SELECT term_id, title, description FROM {$table}" ); // phpcs:ignore WordPress.DB
+				foreach ( $rows as $row ) {
+					$data                        = array_filter(
+						array(
+							'title'       => (string) $row->title,
+							'description' => (string) $row->description,
+						),
+						'strlen'
+					);
+					$terms[ (int) $row->term_id ] = array_merge( isset( $terms[ (int) $row->term_id ] ) ? $terms[ (int) $row->term_id ] : array(), $data );
+				}
+			}
+		}
+		return compact( 'posts', 'terms' );
+	}
+
+	/**
+	 * Copy SEO data from another plugin into Sox SEO's own fields: titles,
+	 * descriptions, focus keywords, canonicals, noindex flags and social
+	 * text, for posts and for categories. Values already set in Sox SEO are
+	 * kept, and the other plugin's data is left untouched, so sources can be
+	 * imported one after another with the most trusted first.
+	 *
+	 * @param string $source rankmath|aioseo|yoast|seopress.
 	 * @return int|WP_Error Number of values copied.
 	 */
 	public static function import( $source ) {
-		global $wpdb;
-		$sources = self::import_sources();
-		if ( ! isset( $sources[ $source ] ) ) {
+		if ( ! array_key_exists( $source, self::import_sources() ) ) {
 			return new WP_Error( 'sox_seo_import', __( 'Unknown import source.', 'sox-seo' ) );
 		}
+		$data = self::read_source( $source );
+
+		// The same description pasted on many pages is boilerplate. Duplicate
+		// descriptions hurt, so leave those pages empty for Claude to write.
+		$seen = array();
+		foreach ( $data['posts'] as $fields ) {
+			if ( isset( $fields['description'] ) ) {
+				$key          = md5( $fields['description'] );
+				$seen[ $key ] = isset( $seen[ $key ] ) ? $seen[ $key ] + 1 : 1;
+			}
+		}
+
 		$copied = 0;
-		foreach ( $sources[ $source ]['keys'] as $field => $their_key ) {
-			$our_key = Sox_SEO_Meta::PREFIX . $field;
-			$rows    = $wpdb->get_results( $wpdb->prepare( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value <> ''", $their_key ) ); // phpcs:ignore WordPress.DB
-			foreach ( $rows as $row ) {
-				$value = (string) $row->meta_value;
-				// Template variables such as %title% or %%sitename%% belong to
-				// the other plugin and would be printed literally here.
-				if ( false !== strpos( $value, '%' ) ) {
-					continue;
+		foreach ( array( 'posts', 'terms' ) as $kind ) {
+			foreach ( $data[ $kind ] as $id => $fields ) {
+				if ( 'posts' === $kind ) {
+					$post = get_post( $id );
+					if ( ! $post || 'revision' === $post->post_type ) {
+						continue;
+					}
+					$object_title = $post->post_title;
+				} else {
+					$term = get_term( $id );
+					if ( ! $term || is_wp_error( $term ) ) {
+						continue;
+					}
+					$object_title = $term->name;
 				}
-				if ( 'focus_keyword' === $field ) {
-					$value = trim( (string) strtok( $value, ',' ) );
-				}
-				if ( '' === (string) get_post_meta( $row->post_id, $our_key, true ) ) {
-					update_post_meta( $row->post_id, $our_key, wp_slash( $value ) );
+
+				foreach ( $fields as $field => $value ) {
+					if ( in_array( $field, array( 'title', 'og_title' ), true ) ) {
+						$value = self::resolve_template( $value, $object_title, 'title' );
+					} elseif ( in_array( $field, array( 'description', 'og_description' ), true ) ) {
+						if ( 'description' === $field && 'posts' === $kind && $seen[ md5( $value ) ] > 3 ) {
+							continue;
+						}
+						$value = self::resolve_template( $value, $object_title, 'description' );
+					} elseif ( 'focus_keyword' === $field ) {
+						$value = trim( (string) strtok( $value, ',' ) );
+					} elseif ( in_array( $field, array( 'canonical', 'og_image' ), true ) ) {
+						$value = esc_url_raw( $value );
+					}
+					if ( '' === $value ) {
+						continue;
+					}
+
+					$key      = Sox_SEO_Meta::PREFIX . $field;
+					$existing = 'posts' === $kind ? get_post_meta( $id, $key, true ) : get_term_meta( $id, $key, true );
+					if ( '' !== (string) $existing ) {
+						continue;
+					}
+					if ( 'posts' === $kind ) {
+						update_post_meta( $id, $key, wp_slash( $value ) );
+					} else {
+						update_term_meta( $id, $key, wp_slash( $value ) );
+					}
 					$copied++;
 				}
 			}

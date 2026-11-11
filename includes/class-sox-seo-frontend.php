@@ -105,7 +105,8 @@ class Sox_SEO_Frontend {
 			/* translators: %d: page number */
 			$out .= ' ' . $sep . ' ' . sprintf( __( 'Page %d', 'sox-seo' ), $paged );
 		}
-		return $out;
+		// WordPress prints this value into <title> as-is, so escape it here.
+		return esc_html( $out );
 	}
 
 	/**
@@ -184,6 +185,9 @@ class Sox_SEO_Frontend {
 		if ( is_search() && Sox_SEO_Options::get( 'noindex_search' ) ) {
 			$noindex = true;
 		}
+		if ( Sox_SEO_Options::get( 'noindex_tags' ) && ( is_tag() || is_tax( 'product_tag' ) ) ) {
+			$noindex = true;
+		}
 		if ( function_exists( 'is_cart' ) && ( is_cart() || is_checkout() || is_account_page() ) ) {
 			$noindex = true;
 		}
@@ -256,7 +260,7 @@ class Sox_SEO_Frontend {
 			return;
 		}
 
-		$title       = wp_get_document_title();
+		$title       = html_entity_decode( wp_get_document_title(), ENT_QUOTES, 'UTF-8' );
 		$description = self::description();
 		$canonical   = self::canonical();
 		$image       = self::image();

@@ -49,6 +49,7 @@ class Sox_SEO_Options {
 			'home_description'      => '',
 			'default_og_image'      => '',
 			'noindex_search'        => 1,
+			'noindex_tags'          => 0,
 			// Schema.
 			'schema_enabled'        => 1,
 			'org_name'              => '',
@@ -150,6 +151,7 @@ class Sox_SEO_Options {
 			'auto_alt_on_upload',
 			'autopilot',
 			'noindex_search',
+			'noindex_tags',
 			'schema_enabled',
 			'sitemap_no_users',
 			'alt_fallback',
@@ -210,7 +212,7 @@ class Sox_SEO_Options {
 		// is active. Their values were not submitted, so keep what was saved.
 		if ( empty( $input['_native'] ) ) {
 			$current = self::all();
-			$native  = array( 'separator', 'title_single', 'title_term', 'home_title', 'home_description', 'default_og_image', 'noindex_search', 'sitemap_no_users', 'schema_enabled', 'org_name', 'org_logo', 'org_social', 'local_enabled', 'local_type', 'local_street', 'local_city', 'local_region', 'local_postcode', 'local_country', 'local_phone', 'local_lat', 'local_lng', 'local_price_range', 'local_hours' );
+			$native  = array( 'separator', 'title_single', 'title_term', 'home_title', 'home_description', 'default_og_image', 'noindex_search', 'noindex_tags', 'sitemap_no_users', 'schema_enabled', 'org_name', 'org_logo', 'org_social', 'local_enabled', 'local_type', 'local_street', 'local_city', 'local_region', 'local_postcode', 'local_country', 'local_phone', 'local_lat', 'local_lng', 'local_price_range', 'local_hours' );
 			foreach ( $native as $key ) {
 				$out[ $key ] = $current[ $key ];
 			}
