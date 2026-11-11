@@ -47,18 +47,10 @@ class Sox_SEO_Sitemap {
 	 * @return array
 	 */
 	private static function not_noindex() {
-		$key = Sox_SEO_Meta::key( 'noindex' );
+		// The flag is stored as "1" or not at all.
 		return array(
-			'relation' => 'OR',
-			array(
-				'key'     => $key,
-				'compare' => 'NOT EXISTS',
-			),
-			array(
-				'key'     => $key,
-				'value'   => '1',
-				'compare' => '!=',
-			),
+			'key'     => Sox_SEO_Meta::key( 'noindex' ),
+			'compare' => 'NOT EXISTS',
 		);
 	}
 

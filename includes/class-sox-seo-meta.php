@@ -242,21 +242,19 @@ class Sox_SEO_Meta {
 		if ( ! self::is_native() ) {
 			return $missing;
 		}
-		// Pages hidden from search engines do not need a description.
+		// Sox SEO never stores an empty value, so "missing" is simply "no row".
+		// Each "no row" test is one indexed join; mixing in "or empty" tests
+		// makes MySQL join the whole meta table several times over.
 		return array(
 			'relation' => 'AND',
-			$missing,
 			array(
-				'relation' => 'OR',
-				array(
-					'key'     => self::key( 'noindex' ),
-					'compare' => 'NOT EXISTS',
-				),
-				array(
-					'key'     => self::key( 'noindex' ),
-					'value'   => '1',
-					'compare' => '!=',
-				),
+				'key'     => $key,
+				'compare' => 'NOT EXISTS',
+			),
+			// Pages hidden from search engines do not need a description.
+			array(
+				'key'     => self::key( 'noindex' ),
+				'compare' => 'NOT EXISTS',
 			),
 		);
 	}

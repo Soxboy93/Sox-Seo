@@ -191,27 +191,12 @@ class Sox_SEO_Lang {
 				'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 					'relation' => 'AND',
 					array(
-						'relation' => 'OR',
-						array(
-							'key'     => $key,
-							'compare' => 'NOT EXISTS',
-						),
-						array(
-							'key'   => $key,
-							'value' => '',
-						),
+						'key'     => $key,
+						'compare' => 'NOT EXISTS',
 					),
 					array(
-						'relation' => 'OR',
-						array(
-							'key'     => Sox_SEO_Meta::key( 'noindex' ),
-							'compare' => 'NOT EXISTS',
-						),
-						array(
-							'key'     => Sox_SEO_Meta::key( 'noindex' ),
-							'value'   => '1',
-							'compare' => '!=',
-						),
+						'key'     => Sox_SEO_Meta::key( 'noindex' ),
+						'compare' => 'NOT EXISTS',
 					),
 				),
 			)

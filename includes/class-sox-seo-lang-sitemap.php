@@ -44,15 +44,9 @@ class Sox_SEO_Lang_Sitemap extends WP_Sitemaps_Provider {
 			'has_password'           => false,
 			'update_post_term_cache' => false,
 			'meta_query'             => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-				'relation' => 'OR',
 				array(
 					'key'     => Sox_SEO_Meta::key( 'noindex' ),
 					'compare' => 'NOT EXISTS',
-				),
-				array(
-					'key'     => Sox_SEO_Meta::key( 'noindex' ),
-					'value'   => '1',
-					'compare' => '!=',
 				),
 			),
 		);
