@@ -68,7 +68,13 @@ class Sox_SEO_WooCommerce {
 			$markup['description'] = $description;
 		}
 
-		return $markup;
+		/**
+		 * Filter the Product structured data.
+		 *
+		 * @param array      $markup  Product JSON-LD.
+		 * @param WC_Product $product Product.
+		 */
+		return apply_filters( 'sox_seo_product_schema', $markup, $product );
 	}
 
 	/**

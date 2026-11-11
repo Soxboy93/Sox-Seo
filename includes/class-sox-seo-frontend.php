@@ -15,6 +15,37 @@ class Sox_SEO_Frontend {
 		add_filter( 'wp_robots', array( __CLASS__, 'robots' ), 20 );
 		remove_action( 'wp_head', 'rel_canonical' );
 		add_action( 'wp_head', array( __CLASS__, 'head' ), 1 );
+		self::bridge_rank_math_filters();
+	}
+
+	/**
+	 * Keep site customisations written for Rank Math working after a switch.
+	 *
+	 * Themes and small site plugins often adjust titles or descriptions
+	 * through Rank Math's filters (translated titles on a multilingual site,
+	 * for instance). With Rank Math gone those filters would never run, so
+	 * each Sox SEO filter also passes its value through the Rank Math filter
+	 * of the same meaning. New code should use the sox_seo_* filters.
+	 */
+	private static function bridge_rank_math_filters() {
+		$map = array(
+			'sox_seo_title'          => 'rank_math/frontend/title',
+			'sox_seo_description'    => 'rank_math/frontend/description',
+			'sox_seo_canonical'      => 'rank_math/frontend/canonical',
+			'sox_seo_og_title'       => 'rank_math/opengraph/facebook/og_title',
+			'sox_seo_og_description' => 'rank_math/opengraph/facebook/og_description',
+			'sox_seo_og_locale'      => 'rank_math/opengraph/facebook/og_locale',
+			'sox_seo_product_schema' => 'rank_math/snippet/rich_snippet_product_entity',
+		);
+		foreach ( $map as $ours => $theirs ) {
+			add_filter(
+				$ours,
+				static function ( $value ) use ( $theirs ) {
+					return has_filter( $theirs ) ? apply_filters( $theirs, $value ) : $value;
+				},
+				5
+			);
+		}
 	}
 
 	/**
@@ -98,12 +129,18 @@ class Sox_SEO_Frontend {
 			);
 		}
 
-		if ( '' === $out ) {
-			return $title;
-		}
-		if ( $paged > 1 ) {
+		if ( '' !== $out && $paged > 1 ) {
 			/* translators: %d: page number */
 			$out .= ' ' . $sep . ' ' . sprintf( __( 'Page %d', 'sox-seo' ), $paged );
+		}
+		/**
+		 * Filter the document title.
+		 *
+		 * @param string $out Title; empty when Sox SEO has none for this view.
+		 */
+		$out = (string) apply_filters( 'sox_seo_title', $out );
+		if ( '' === $out ) {
+			return $title;
 		}
 		// WordPress prints this value into <title> as-is, so escape it here.
 		return esc_html( $out );
@@ -129,13 +166,31 @@ class Sox_SEO_Frontend {
 		} elseif ( is_front_page() ) {
 			$out = get_bloginfo( 'description' );
 		}
-		return trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( (string) $out ) ) );
+		$out = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( (string) $out ) ) );
+		/**
+		 * Filter the meta description.
+		 *
+		 * @param string $out Description.
+		 */
+		return (string) apply_filters( 'sox_seo_description', $out );
 	}
 
 	/**
 	 * @return string
 	 */
 	public static function canonical() {
+		/**
+		 * Filter the canonical URL.
+		 *
+		 * @param string $url Canonical URL; empty prints no tag.
+		 */
+		return (string) apply_filters( 'sox_seo_canonical', self::canonical_url() );
+	}
+
+	/**
+	 * @return string
+	 */
+	private static function canonical_url() {
 		$paged = (int) get_query_var( 'paged' );
 		$post  = self::current_post();
 
@@ -284,11 +339,11 @@ class Sox_SEO_Frontend {
 		// Optional wording for social shares, set per page.
 		$social_title       = $post ? Sox_SEO_Meta::get_post( $post->ID, 'og_title' ) : '';
 		$social_description = $post ? Sox_SEO_Meta::get_post( $post->ID, 'og_description' ) : '';
-		$social_title       = '' !== $social_title ? $social_title : $title;
-		$social_description = '' !== $social_description ? $social_description : $description;
+		$social_title       = (string) apply_filters( 'sox_seo_og_title', '' !== $social_title ? $social_title : $title );
+		$social_description = (string) apply_filters( 'sox_seo_og_description', '' !== $social_description ? $social_description : $description );
 
 		$og = array(
-			'og:locale'      => get_locale(),
+			'og:locale'      => (string) apply_filters( 'sox_seo_og_locale', get_locale() ),
 			'og:type'        => $type,
 			'og:title'       => $social_title,
 			'og:description' => $social_description,
