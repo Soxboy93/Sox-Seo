@@ -15,6 +15,9 @@ class Sox_SEO_Frontend {
 		add_filter( 'wp_robots', array( __CLASS__, 'robots' ), 20 );
 		remove_action( 'wp_head', 'rel_canonical' );
 		add_action( 'wp_head', array( __CLASS__, 'head' ), 1 );
+		// The Hello Elementor theme prints its own meta description from the
+		// excerpt, which would leave pages with two different descriptions.
+		add_filter( 'hello_elementor_description_meta_tag', '__return_false' );
 		self::bridge_rank_math_filters();
 	}
 
