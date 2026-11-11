@@ -1,0 +1,169 @@
+.sox-seo-muted {
+	color: #646970;
+}
+
+.sox-seo-error,
+.sox-seo-danger {
+	color: #b32d2e;
+}
+
+.sox-seo-status {
+	margin-left: 8px;
+}
+
+/* Search result preview */
+.sox-seo-preview {
+	max-width: 600px;
+	margin: 8px 0 16px;
+	padding: 12px 16px;
+	border: 1px solid #dcdcde;
+	border-radius: 8px;
+	background: #fff;
+	font-family: arial, sans-serif;
+}
+
+.sox-seo-preview-url {
+	overflow: hidden;
+	color: #4d5156;
+	font-size: 12px;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.sox-seo-preview-title {
+	margin: 2px 0;
+	color: #1a0dab;
+	font-size: 18px;
+	line-height: 1.3;
+}
+
+.sox-seo-preview-desc {
+	color: #4d5156;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.sox-seo-counter {
+	float: right;
+	color: #646970;
+	font-size: 12px;
+}
+
+.sox-seo-counter.sox-seo-over {
+	color: #b32d2e;
+	font-weight: 600;
+}
+
+.sox-seo-advanced {
+	margin: 8px 0;
+}
+
+.sox-seo-advanced summary {
+	cursor: pointer;
+}
+
+.sox-seo-link-results ul {
+	margin: 8px 0;
+}
+
+.sox-seo-link-results li {
+	margin-bottom: 6px;
+}
+
+/* Analysis */
+.sox-seo-analysis {
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid #dcdcde;
+}
+
+.sox-seo-check {
+	position: relative;
+	margin: 0 0 4px;
+	padding-left: 18px;
+}
+
+.sox-seo-check::before {
+	position: absolute;
+	top: 6px;
+	left: 2px;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	content: "";
+}
+
+.sox-seo-check.sox-seo-good::before {
+	background: #00a32a;
+}
+
+.sox-seo-check.sox-seo-ok::before {
+	background: #dba617;
+}
+
+.sox-seo-check.sox-seo-bad::before {
+	background: #d63638;
+}
+
+.sox-seo-score {
+	display: inline-block;
+	padding: 1px 8px;
+	border-radius: 10px;
+	color: #fff;
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.sox-seo-score.sox-seo-good {
+	background: #00a32a;
+}
+
+.sox-seo-score.sox-seo-ok {
+	background: #996800;
+}
+
+.sox-seo-score.sox-seo-bad {
+	background: #d63638;
+}
+
+.column-sox_seo {
+	width: 70px;
+}
+
+/* Admin pages */
+.sox-seo-cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+	gap: 16px;
+	max-width: 1100px;
+}
+
+.sox-seo-card {
+	padding: 4px 16px 12px;
+	border: 1px solid #c3c4c7;
+	background: #fff;
+}
+
+.sox-seo-log {
+	max-height: 320px;
+	margin: 0 0 0 18px;
+	overflow-y: auto;
+	font-size: 12px;
+}
+
+.sox-seo-inline-form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	align-items: flex-end;
+	margin-bottom: 16px;
+}
+
+.sox-seo-usage {
+	max-width: 520px;
+}
+
+.sox-seo-term input[type="text"],
+.sox-seo-term textarea {
+	width: 95%;
+}
