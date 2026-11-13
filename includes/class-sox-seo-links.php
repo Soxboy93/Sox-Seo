@@ -167,6 +167,12 @@ class Sox_SEO_Links {
 	 * @return int|WP_Error Number of links inserted.
 	 */
 	private static function apply_elementor( $post_id, array $links ) {
+		// Elementor filters its layout data on save for anyone who may not
+		// post unfiltered HTML, removing <style>, <svg> and similar from every
+		// widget on the page. Saving as such a user would damage the design.
+		if ( ! current_user_can( 'unfiltered_html' ) ) {
+			return new WP_Error( 'sox_seo_builder', __( 'Only an administrator or editor can add links to an Elementor page from here. Add them in the Elementor editor instead.', 'sox-seo' ) );
+		}
 		$raw  = get_post_meta( $post_id, '_elementor_data', true );
 		$data = is_string( $raw ) ? json_decode( $raw, true ) : null;
 		if ( ! is_array( $data ) ) {
