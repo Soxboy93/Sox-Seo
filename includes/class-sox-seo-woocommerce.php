@@ -24,7 +24,7 @@ class Sox_SEO_WooCommerce {
 	}
 
 	/**
-	 * Make sure a product page carries Product structured data.
+	 * Make sure shop pages carry Product and breadcrumb structured data.
 	 *
 	 * WooCommerce builds it from a hook inside its own product template.
 	 * Product pages designed in Elementor or another builder never run that
@@ -32,19 +32,32 @@ class Sox_SEO_WooCommerce {
 	 * results. When WooCommerce has produced none, build it here.
 	 */
 	public static function ensure_product_schema() {
-		if ( ! is_singular( 'product' ) || ! function_exists( 'WC' ) || empty( WC()->structured_data ) ) {
+		if ( ! function_exists( 'WC' ) || empty( WC()->structured_data ) || ! function_exists( 'is_woocommerce' ) || ! is_woocommerce() ) {
 			return;
 		}
 		$structured = WC()->structured_data;
+		$have       = array();
 		foreach ( (array) $structured->get_data() as $item ) {
-			$type = isset( $item['@type'] ) ? $item['@type'] : '';
-			if ( 'Product' === $type || ( is_array( $type ) && in_array( 'Product', $type, true ) ) ) {
-				return; // WooCommerce already has it.
+			foreach ( (array) ( isset( $item['@type'] ) ? $item['@type'] : array() ) as $type ) {
+				$have[ $type ] = true;
 			}
 		}
-		$product = wc_get_product( get_queried_object_id() );
-		if ( $product ) {
-			$structured->generate_product_data( $product );
+
+		if ( is_singular( 'product' ) && empty( $have['Product'] ) ) {
+			$product = wc_get_product( get_queried_object_id() );
+			if ( $product ) {
+				$structured->generate_product_data( $product );
+			}
+		}
+
+		// The breadcrumb trail (Home > Category > Product) tells Google how
+		// the shop is organised. WooCommerce only emits it when its own
+		// breadcrumb template is displayed, which builder layouts often omit.
+		if ( empty( $have['BreadcrumbList'] ) && class_exists( 'WC_Breadcrumb' ) && ! is_shop() ) {
+			$breadcrumb = new WC_Breadcrumb();
+			$breadcrumb->add_crumb( __( 'Home', 'sox-seo' ), home_url( '/' ) );
+			$breadcrumb->generate();
+			$structured->generate_breadcrumblist_data( $breadcrumb );
 		}
 	}
 
