@@ -38,7 +38,7 @@ class Sox_SEO_Analyzer {
 		// Rank Math stores several comma-separated keywords; the first is primary.
 		$keyword = trim( (string) strtok( $keyword, ',' ) );
 
-		$html  = $post->post_content;
+		$html  = Sox_SEO_AI::source_html( $post );
 		$text  = Sox_SEO_AI::plain_content( $post );
 		$words = self::word_count( $text );
 

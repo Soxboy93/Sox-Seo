@@ -43,14 +43,84 @@ class Sox_SEO_AI {
 	}
 
 	/**
+	 * The HTML a page is really made of.
+	 *
+	 * For a page built in Elementor that is the content of its widgets.
+	 * Elementor also keeps a text copy in post_content, but that copy is only
+	 * refreshed when the page is saved in the editor and is often out of date.
+	 *
+	 * @param WP_Post $post Post.
+	 * @return string
+	 */
+	public static function source_html( $post ) {
+		if ( 'builder' !== get_post_meta( $post->ID, '_elementor_edit_mode', true ) ) {
+			return (string) $post->post_content;
+		}
+		$data = json_decode( (string) get_post_meta( $post->ID, '_elementor_data', true ), true );
+		if ( ! is_array( $data ) ) {
+			return (string) $post->post_content;
+		}
+		$parts = array();
+		self::collect_elementor_text( $data, $parts );
+		$html = trim( implode( "\n", $parts ) );
+		return '' !== $html ? $html : (string) $post->post_content;
+	}
+
+	/**
+	 * Gather the visible text of Elementor widgets, in page order.
+	 *
+	 * @param array    $elements Elementor elements.
+	 * @param string[] $parts    Collected HTML fragments.
+	 */
+	private static function collect_elementor_text( array $elements, array &$parts ) {
+		$text_keys = array( 'title', 'editor', 'html', 'text', 'description_text', 'title_text', 'caption', 'content', 'button_text', 'tab_title', 'tab_content', 'testimonial_content', 'shortcode' );
+		foreach ( $elements as $element ) {
+			if ( ! is_array( $element ) ) {
+				continue;
+			}
+			$settings = isset( $element['settings'] ) && is_array( $element['settings'] ) ? $element['settings'] : array();
+			if ( isset( $element['widgetType'] ) ) {
+				foreach ( $text_keys as $key ) {
+					if ( empty( $settings[ $key ] ) || ! is_string( $settings[ $key ] ) ) {
+						continue;
+					}
+					$value = $settings[ $key ];
+					if ( 'title' === $key && 'heading' === $element['widgetType'] ) {
+						$tag   = isset( $settings['header_size'] ) && preg_match( '/^h[1-6]$/', (string) $settings['header_size'] ) ? $settings['header_size'] : 'h2';
+						$value = "<{$tag}>{$value}</{$tag}>";
+					}
+					$parts[] = $value;
+				}
+				// Repeaters: tabs, accordions, icon lists, FAQs.
+				foreach ( $settings as $setting ) {
+					if ( is_array( $setting ) && isset( $setting[0] ) && is_array( $setting[0] ) ) {
+						foreach ( $setting as $row ) {
+							foreach ( $text_keys as $key ) {
+								if ( ! empty( $row[ $key ] ) && is_string( $row[ $key ] ) ) {
+									$parts[] = $row[ $key ];
+								}
+							}
+						}
+					}
+				}
+			}
+			if ( ! empty( $element['elements'] ) && is_array( $element['elements'] ) ) {
+				self::collect_elementor_text( $element['elements'], $parts );
+			}
+		}
+	}
+
+	/**
 	 * Plain-text copy of a post, shortcodes and markup removed.
 	 *
 	 * @param WP_Post $post Post.
 	 * @return string
 	 */
 	public static function plain_content( $post ) {
-		$content = strip_shortcodes( $post->post_content );
+		$content = strip_shortcodes( self::source_html( $post ) );
 		$content = preg_replace( '#<(script|style)\b[^>]*>.*?</\1>#is', ' ', $content );
+		// Keep words in neighbouring elements apart once the tags are gone.
+		$content = str_replace( '<', ' <', $content );
 		$content = wp_strip_all_tags( $content );
 		return trim( preg_replace( '/\s+/u', ' ', $content ) );
 	}
@@ -74,6 +144,15 @@ class Sox_SEO_AI {
 		$lines[] = '<type>' . $post->post_type . '</type>';
 		$lines[] = '<title>' . get_the_title( $post ) . '</title>';
 		$lines[] = '<url>' . get_permalink( $post ) . '</url>';
+		// What search engines are shown today, as opposed to the page's name.
+		$seo_title = Sox_SEO_Meta::get_post( $post->ID, 'title' );
+		$seo_desc  = Sox_SEO_Meta::get_post( $post->ID, 'description' );
+		if ( $seo_title ) {
+			$lines[] = '<current_seo_title>' . $seo_title . '</current_seo_title>';
+		}
+		if ( $seo_desc ) {
+			$lines[] = '<current_meta_description>' . $seo_desc . '</current_meta_description>';
+		}
 		if ( $post->post_excerpt ) {
 			$lines[] = '<excerpt>' . wp_strip_all_tags( $post->post_excerpt ) . '</excerpt>';
 		}
@@ -115,7 +194,8 @@ class Sox_SEO_AI {
 			}
 		}
 
-		$lines[] = '<content' . ( $cut ? ' truncated="true"' : '' ) . '>' . $content . '</content>';
+		$dynamic = has_shortcode( self::source_html( $post ), 'products' ) || false !== strpos( self::source_html( $post ), '[' );
+		$lines[] = '<content' . ( $cut ? ' truncated="true"' : '' ) . ( $dynamic ? ' note="Product grids, forms and other generated blocks are on the page but not in this text"' : '' ) . '>' . $content . '</content>';
 		$lines[] = '</page>';
 		return implode( "\n", $lines );
 	}
@@ -479,7 +559,7 @@ class Sox_SEO_AI {
 		$ask .= self::post_context( $post );
 
 		$headings = array();
-		if ( preg_match_all( '#<h([1-6])[^>]*>(.*?)</h\1>#is', $post->post_content, $matches, PREG_SET_ORDER ) ) {
+		if ( preg_match_all( '#<h([1-6])[^>]*>(.*?)</h\1>#is', self::source_html( $post ), $matches, PREG_SET_ORDER ) ) {
 			foreach ( $matches as $match ) {
 				$headings[] = 'H' . $match[1] . ': ' . wp_strip_all_tags( $match[2] );
 			}
