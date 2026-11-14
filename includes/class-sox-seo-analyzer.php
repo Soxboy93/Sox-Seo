@@ -100,14 +100,17 @@ class Sox_SEO_Analyzer {
 				self::contains( $slug, $keyword ) ? __( 'Focus keyword appears in the URL.', 'sox-seo' ) : __( 'Focus keyword is not in the URL.', 'sox-seo' )
 			);
 
-			$intro = mb_substr( $text, 0, 600 );
+			// The page's own name is its main heading, the first thing on the
+			// page, so it counts as the start of the content.
+			$body  = wp_strip_all_tags( $post->post_title ) . ' ' . $text;
+			$intro = mb_substr( $body, 0, 600 );
 			$add(
 				self::contains( $intro, $keyword ) ? 'good' : 'ok',
 				self::contains( $intro, $keyword ) ? __( 'Focus keyword appears near the start of the content.', 'sox-seo' ) : __( 'Focus keyword does not appear near the start of the content.', 'sox-seo' )
 			);
 
 			if ( $words >= 100 ) {
-				$count   = self::occurrences( $text, $keyword );
+				$count   = self::occurrences( $body, $keyword );
 				// Share of the text's words at which the phrase starts.
 				$density = $count / $words * 100;
 				if ( 0 === $count ) {
@@ -121,7 +124,9 @@ class Sox_SEO_Analyzer {
 				}
 			}
 
-			if ( preg_match_all( '#<h[2-4][^>]*>(.*?)</h[2-4]>#is', $html, $headings ) ) {
+			// Product descriptions use subheadings for specifications and
+			// contents, where repeating the keyword would be forced.
+			if ( 'product' !== $post->post_type && preg_match_all( '#<h[2-4][^>]*>(.*?)</h[2-4]>#is', $html, $headings ) ) {
 				$found = false;
 				foreach ( $headings[1] as $heading ) {
 					if ( self::contains( wp_strip_all_tags( $heading ), $keyword ) ) {
