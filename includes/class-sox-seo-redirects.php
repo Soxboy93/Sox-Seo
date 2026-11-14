@@ -216,6 +216,15 @@ class Sox_SEO_Redirects {
 			),
 			array( '%s', '%s', '%d', '%s' )
 		);
+		// A page cache may still hold the old "not found" page for this
+		// address and would keep serving it instead of the redirect.
+		foreach ( array( $source, trailingslashit( $source ) ) as $path ) {
+			do_action( 'litespeed_purge_url', home_url( $path ) );
+			if ( function_exists( 'rocket_clean_files' ) ) {
+				rocket_clean_files( array( home_url( $path ) ) );
+			}
+		}
+
 		// A URL with a redirect is no longer a 404 to chase.
 		$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . self::table_404() . ' WHERE url LIKE %s', $wpdb->esc_like( $source ) . '%' ) ); // phpcs:ignore WordPress.DB
 		return true;
