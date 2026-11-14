@@ -94,11 +94,23 @@ class Sox_SEO_Analyzer {
 				self::contains( $description, $keyword ) ? __( 'Focus keyword appears in the meta description.', 'sox-seo' ) : __( 'Focus keyword is missing from the meta description.', 'sox-seo' )
 			);
 
-			$slug = str_replace( '-', ' ', rawurldecode( $post->post_name ) );
+			// The address is the domain plus the page's own part, and a brand
+			// in the domain (intexjor.com) is as visible there as in the path.
+			$slug    = rawurldecode( $post->post_name );
+			$host    = self::normalize( (string) wp_parse_url( home_url(), PHP_URL_HOST ) );
+			$host    = str_replace( ' ', '', $host );
+			$missing = array();
+			foreach ( explode( ' ', self::normalize( $keyword ) ) as $word ) {
+				if ( '' !== $word && false === mb_strpos( $host, $word ) ) {
+					$missing[] = $word;
+				}
+			}
+			$in_url = ! $missing || self::contains( $slug, implode( ' ', $missing ) );
 			$add(
-				self::contains( $slug, $keyword ) ? 'good' : 'ok',
-				self::contains( $slug, $keyword ) ? __( 'Focus keyword appears in the URL.', 'sox-seo' ) : __( 'Focus keyword is not in the URL.', 'sox-seo' )
+				$in_url ? 'good' : 'ok',
+				$in_url ? __( 'Focus keyword appears in the URL.', 'sox-seo' ) : __( 'Focus keyword is not in the URL.', 'sox-seo' )
 			);
+
 
 			// The page's own name is its main heading, the first thing on the
 			// page, so it counts as the start of the content.
