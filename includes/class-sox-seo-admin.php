@@ -603,6 +603,32 @@ class Sox_SEO_Admin {
 				</div>
 				<?php endif; ?>
 
+				<?php if ( Sox_SEO_Meta::is_native() ) : ?>
+				<div class="sox-seo-card" data-task="refine">
+					<h2><?php esc_html_e( 'Focus keywords', 'sox-seo' ); ?></h2>
+					<p><?php esc_html_e( 'Claude picks the short phrase people really search for on each page, and adjusts the title and description only where they do not carry it. Unlike the other tools this one changes existing text; the previous values are kept and nothing touches page addresses.', 'sox-seo' ); ?></p>
+					<p>
+						<label><?php esc_html_e( 'Content type:', 'sox-seo' ); ?>
+							<select class="sox-seo-bulk-type">
+								<option value=""><?php esc_html_e( 'Everything', 'sox-seo' ); ?></option>
+								<?php foreach ( Sox_SEO_Meta::post_types() as $type ) : ?>
+									<?php $object = get_post_type_object( $type ); ?>
+									<option value="<?php echo esc_attr( $type ); ?>"><?php echo esc_html( $object ? $object->labels->name : $type ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</label>
+					</p>
+					<p class="sox-seo-count">
+						<?php
+						/* translators: %s: number of pages */
+						printf( esc_html__( '%s pages have not been reviewed yet.', 'sox-seo' ), '<strong>' . esc_html( number_format_i18n( Sox_SEO_Automation::unrefined_query( 1 )->found_posts ) ) . '</strong>' );
+						?>
+					</p>
+					<p><button type="button" class="button button-primary sox-seo-bulk-start"><?php esc_html_e( 'Start', 'sox-seo' ); ?></button> <span class="sox-seo-status"></span></p>
+					<ol class="sox-seo-log"></ol>
+				</div>
+				<?php endif; ?>
+
 				<?php if ( class_exists( 'WooCommerce' ) ) : ?>
 				<div class="sox-seo-card" data-task="product_copy">
 					<h2><?php esc_html_e( 'Product short descriptions', 'sox-seo' ); ?></h2>

@@ -166,6 +166,57 @@ class Sox_SEO_Automation {
 	}
 
 	/**
+	 * Published posts whose focus keyword has not been reviewed by Claude.
+	 *
+	 * @param int      $limit      Max IDs.
+	 * @param int[]    $exclude    IDs to skip.
+	 * @param string[] $post_types Post types; all managed types by default.
+	 * @return WP_Query
+	 */
+	public static function unrefined_query( $limit = 1, array $exclude = array(), array $post_types = array() ) {
+		return new WP_Query(
+			array(
+				'post_type'      => $post_types ? $post_types : Sox_SEO_Meta::post_types(),
+				'post_status'    => 'publish',
+				'posts_per_page' => $limit,
+				'fields'         => 'ids',
+				'post__not_in'   => array_merge( $exclude, Sox_SEO_Meta::utility_page_ids() ), // phpcs:ignore WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_post__not_in
+				'orderby'        => 'ID',
+				'order'          => 'DESC',
+				'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+					'relation' => 'AND',
+					array(
+						'key'     => '_sox_seo_refined',
+						'compare' => 'NOT EXISTS',
+					),
+					array(
+						'key'     => Sox_SEO_Meta::key( 'noindex' ),
+						'compare' => 'NOT EXISTS',
+					),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Review one post's focus keyword, title and description and save them.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return array|WP_Error
+	 */
+	public static function refine( $post_id ) {
+		$meta = Sox_SEO_AI::refine_meta( $post_id );
+		if ( is_wp_error( $meta ) ) {
+			return $meta;
+		}
+		if ( '' === $meta['focus_keyword'] ) {
+			return new WP_Error( 'sox_seo_empty', __( 'Claude returned no focus keyword.', 'sox-seo' ) );
+		}
+		Sox_SEO_AI::apply_refined_meta( $post_id, $meta );
+		return $meta;
+	}
+
+	/**
 	 * Categories that list something but have no introduction text.
 	 *
 	 * @param int   $limit   Max IDs.

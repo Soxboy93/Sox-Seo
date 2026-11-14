@@ -36,7 +36,7 @@ class Sox_SEO_Analyzer {
 		$description = $get( 'description' );
 		$keyword     = $get( 'focus_keyword' );
 		// Rank Math stores several comma-separated keywords; the first is primary.
-		$keyword = trim( (string) strtok( $keyword, ',' ) );
+		$keyword = trim( html_entity_decode( (string) strtok( $keyword, ',' ), ENT_QUOTES, 'UTF-8' ) );
 
 		$html  = Sox_SEO_AI::source_html( $post );
 		$text  = Sox_SEO_AI::plain_content( $post );
@@ -108,8 +108,8 @@ class Sox_SEO_Analyzer {
 
 			if ( $words >= 100 ) {
 				$count   = self::occurrences( $text, $keyword );
-				$kw_len  = max( 1, self::word_count( $keyword ) );
-				$density = $count * $kw_len / $words * 100;
+				// Share of the text's words at which the phrase starts.
+				$density = $count / $words * 100;
 				if ( 0 === $count ) {
 					$add( 'bad', __( 'Focus keyword never appears in the content.', 'sox-seo' ) );
 				} elseif ( $density > 3 ) {
@@ -180,11 +180,15 @@ class Sox_SEO_Analyzer {
 				}
 			}
 		}
-		$add(
-			$internal ? 'good' : 'ok',
-			/* translators: %d: number of links */
-			$internal ? sprintf( _n( '%d internal link in the content.', '%d internal links in the content.', $internal, 'sox-seo' ), $internal ) : __( 'No internal links in the content. Link to related pages.', 'sox-seo' )
-		);
+		// A product page links onward through its category, related products
+		// and the menu, so links inside the description are not expected.
+		if ( 'product' !== $post->post_type || $internal ) {
+			$add(
+				$internal ? 'good' : 'ok',
+				/* translators: %d: number of links */
+				$internal ? sprintf( _n( '%d internal link in the content.', '%d internal links in the content.', $internal, 'sox-seo' ), $internal ) : __( 'No internal links in the content. Link to related pages.', 'sox-seo' )
+			);
+		}
 
 		// Score.
 		$total  = 0;
@@ -205,23 +209,57 @@ class Sox_SEO_Analyzer {
 	}
 
 	/**
-	 * Unicode-aware, case-insensitive containment.
+	 * Lower-case words only: entities decoded, punctuation and symbols
+	 * (hyphens, ×, ™) turned into spaces. Works for any script.
 	 *
-	 * @param string $haystack Text.
-	 * @param string $needle   Phrase.
-	 * @return bool
+	 * @param string $text Text.
+	 * @return string
 	 */
-	private static function contains( $haystack, $needle ) {
-		return '' !== $needle && false !== mb_stripos( $haystack, $needle );
+	private static function normalize( $text ) {
+		$text = html_entity_decode( (string) $text, ENT_QUOTES, 'UTF-8' );
+		$text = preg_replace( '/[^\p{L}\p{N}]+/u', ' ', mb_strtolower( $text ) );
+		return trim( $text );
 	}
 
 	/**
+	 * Whether a text covers a keyword: every word of the keyword appears in
+	 * it as a whole word, in any order. Search engines match this way, so
+	 * "Intex Twin Airbed, 99 cm" covers the keyword "intex twin airbed", and
+	 * a URL written with hyphens covers a keyword written with spaces.
+	 *
+	 * @param string $haystack Text.
+	 * @param string $needle   Keyword.
+	 * @return bool
+	 */
+	private static function contains( $haystack, $needle ) {
+		$needle = self::normalize( $needle );
+		if ( '' === $needle ) {
+			return false;
+		}
+		$words = array_flip( explode( ' ', self::normalize( $haystack ) ) );
+		foreach ( explode( ' ', $needle ) as $word ) {
+			if ( ! isset( $words[ $word ] ) ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * How often the keyword is used in a text: the phrase itself, or, where
+	 * the exact phrase never occurs, once if all of its words are present.
+	 *
 	 * @param string $text   Text.
-	 * @param string $phrase Phrase.
+	 * @param string $phrase Keyword.
 	 * @return int
 	 */
 	private static function occurrences( $text, $phrase ) {
-		return mb_substr_count( mb_strtolower( $text ), mb_strtolower( $phrase ) );
+		$phrase = self::normalize( $phrase );
+		if ( '' === $phrase ) {
+			return 0;
+		}
+		$count = mb_substr_count( ' ' . self::normalize( $text ) . ' ', ' ' . $phrase . ' ' );
+		return $count ? $count : ( self::contains( $text, $phrase ) ? 1 : 0 );
 	}
 
 	/**

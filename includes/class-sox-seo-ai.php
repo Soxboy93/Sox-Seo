@@ -1054,4 +1054,69 @@ class Sox_SEO_AI {
 		}
 		return $out;
 	}
+
+	/**
+	 * Re-optimise a page that already has SEO text: choose a focus keyword
+	 * people really search for, and adjust the title and description only as
+	 * far as needed to carry it.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return array|WP_Error {focus_keyword, title, description}
+	 */
+	public static function refine_meta( $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			return new WP_Error( 'sox_seo_not_found', __( 'Post not found.', 'sox-seo' ) );
+		}
+		$keyword = Sox_SEO_Meta::get_post( $post_id, 'focus_keyword' );
+
+		$ask  = "Choose the focus keyword for this page, then make sure its SEO title and meta description are built around it.\n\n";
+		$ask .= "A focus keyword is the short phrase a person types into Google to find this page: usually two to four words, such as \"intex queen airbed\" or \"pool filter pump\". It is not the full product name with every feature and dimension. Pick a phrase specific enough to tell this page apart from similar pages on the same site (a size name like Twin or Queen, a line name, or the thing that makes it different), and use only words that appear in the page's name, because the page's address is built from that name and cannot change.\n\n";
+		if ( $keyword ) {
+			$ask .= "The current focus keyword is \"{$keyword}\". Keep it if it already fits this description; replace it if it is too long or not how people search.\n\n";
+		}
+		$ask .= "Every word of the focus keyword must appear in both the SEO title and the meta description. If the current title and description (given below) already do that and read well, return them unchanged: they may have been written by the site owner. Otherwise rewrite them, keeping their facts and tone. Title at most 60 characters, without the site name, which is added automatically. Description 120 to 155 characters.\n\n";
+		if ( 'product' === $post->post_type ) {
+			$ask .= "This is a product page: the searcher is close to buying, so lead with the product and the detail that sets it apart.\n\n";
+		}
+		$ask .= self::post_context( $post );
+
+		$search = Sox_SEO_GSC::prompt_block( get_permalink( $post ) );
+		if ( $search ) {
+			$ask .= "\n\nReal searches this page appeared for. A query with impressions is strong evidence of how people look for it:\n\n" . $search;
+		}
+
+		$data = Sox_SEO_Anthropic::json( self::system( Sox_SEO_Meta::post_language( $post_id ) ), $ask, self::meta_schema() );
+		return is_wp_error( $data ) ? $data : self::clean_meta( $data );
+	}
+
+	/**
+	 * Save refined meta over the existing values. The values being replaced
+	 * are kept once in post meta, so the first state can always be restored.
+	 *
+	 * @param int   $post_id Post ID.
+	 * @param array $meta    {focus_keyword, title, description}.
+	 */
+	public static function apply_refined_meta( $post_id, array $meta ) {
+		if ( ! metadata_exists( 'post', $post_id, '_sox_seo_prev_meta' ) ) {
+			update_post_meta(
+				$post_id,
+				'_sox_seo_prev_meta',
+				wp_slash(
+					array(
+						'focus_keyword' => Sox_SEO_Meta::get_post( $post_id, 'focus_keyword' ),
+						'title'         => Sox_SEO_Meta::get_post( $post_id, 'title' ),
+						'description'   => Sox_SEO_Meta::get_post( $post_id, 'description' ),
+					)
+				)
+			);
+		}
+		foreach ( array( 'focus_keyword', 'title', 'description' ) as $field ) {
+			if ( ! empty( $meta[ $field ] ) ) {
+				Sox_SEO_Meta::set_post( $post_id, $field, $meta[ $field ] );
+			}
+		}
+		update_post_meta( $post_id, '_sox_seo_refined', time() );
+		update_post_meta( $post_id, '_sox_seo_ai_generated', time() );
+	}
 }

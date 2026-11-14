@@ -444,11 +444,39 @@ class Sox_SEO_Rest {
 	 * @return array|WP_Error
 	 */
 	public static function bulk( $request ) {
-		$task      = in_array( $request['task'], array( 'alt', 'product_copy', 'lang_meta', 'term_copy' ), true ) ? $request['task'] : 'meta';
+		$task      = in_array( $request['task'], array( 'alt', 'product_copy', 'lang_meta', 'term_copy', 'refine' ), true ) ? $request['task'] : 'meta';
 		$post_type = sanitize_key( (string) $request['post_type'] );
 		$exclude   = array_map( 'absint', (array) $request['exclude'] );
 		if ( 'lang_meta' === $task || 'term_copy' === $task ) {
 			return self::bulk_extra( $task, sanitize_key( (string) $request['lang'] ), $exclude );
+		}
+		if ( 'refine' === $task ) {
+			if ( ! Sox_SEO_Meta::is_native() ) {
+				return new WP_Error( 'sox_seo_unsupported', __( 'Keyword review needs Sox SEO to be the active SEO plugin.', 'sox-seo' ), array( 'status' => 400 ) );
+			}
+			$types = ( $post_type && in_array( $post_type, Sox_SEO_Meta::post_types(), true ) ) ? array( $post_type ) : array();
+			$ids   = Sox_SEO_Automation::unrefined_query( 1, $exclude, $types )->posts;
+			if ( ! $ids ) {
+				return array(
+					'done'      => true,
+					'remaining' => 0,
+				);
+			}
+			$id     = (int) $ids[0];
+			$result = Sox_SEO_Automation::refine( $id );
+			$error  = is_wp_error( $result ) ? $result->get_error_message() : '';
+			if ( is_wp_error( $result ) && in_array( $result->get_error_code(), array( 'sox_seo_no_key', 'sox_seo_api_401', 'sox_seo_api_403' ), true ) ) {
+				return new WP_Error( $result->get_error_code(), $error, array( 'status' => 400 ) );
+			}
+			return array(
+				'done'      => false,
+				'id'        => $id,
+				'title'     => wp_strip_all_tags( get_the_title( $id ) ),
+				'edit_link' => get_edit_post_link( $id, 'raw' ),
+				'output'    => is_array( $result ) ? '[' . $result['focus_keyword'] . '] ' . $result['title'] : '',
+				'error'     => $error,
+				'remaining' => (int) Sox_SEO_Automation::unrefined_query( 1, array(), $types )->found_posts,
+			);
 		}
 
 		if ( 'meta' === $task ) {
