@@ -163,7 +163,9 @@ class Sox_SEO_Meta {
 	 */
 	public static function post_types() {
 		$types = get_post_types( array( 'public' => true ), 'names' );
-		unset( $types['attachment'] );
+		// Media files, and page-builder building blocks (saved headers,
+		// footers and templates) that are never pages in their own right.
+		unset( $types['attachment'], $types['elementor_library'], $types['e-floating-buttons'], $types['elementor_font'], $types['elementor_icons'], $types['et_pb_layout'], $types['fl-builder-template'], $types['wp_block'] );
 		/**
 		 * Filter the post types Sox SEO manages.
 		 *
