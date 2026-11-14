@@ -8,6 +8,7 @@ It covers the feature set people install Rank Math, Yoast SEO, All in One SEO an
 
 | Area | What you get |
 | --- | --- |
+| **Dashboard** | Average on-page score, what still needs attention, the pages to improve first, search clicks and Claude usage, on one screen. |
 | **AI titles & descriptions** | Claude reads each page, post, product or category and writes the SEO title, meta description and focus keyword. One click in the editor, automatic on publish, or in bulk. |
 | **AI image alt text** | Claude looks at each image (vision) and writes the alt text. Automatic on upload, in bulk for the whole media library, or per image from the Media list. |
 | **AI internal links** | Claude suggests where a page should link to other pages on the site; tick the ones you want and they are inserted and saved as a revision. |
@@ -16,6 +17,7 @@ It covers the feature set people install Rank Math, Yoast SEO, All in One SEO an
 | **Google Search Console** | Connect once and Claude is given the real searches each page appears for when it writes titles and audits content. A Search Performance screen lists pages that are close to ranking higher. |
 | **Second-language SEO** | On TranslatePress sites, every page and category gets an extra SEO title and description per language, written by Claude as a native speaker would search, plus a sitemap of the translated URLs. |
 | **Category introductions** | Claude writes a short buying guide for each category from the items in it. Preview on the category screen, or fill all empty categories in bulk. |
+| **Focus keyword review** | Claude replaces over-long or missing focus keywords with the short phrase people search for, and adjusts titles and descriptions only where they do not carry it. Previous values are kept. |
 | **Smart 404 fixes** | Claude matches logged 404 addresses to the live page that truly replaces each one and proposes the redirects; junk and bot probes are left alone. |
 | **Autopilot** | Hourly background job that works through everything still missing SEO data, capped by a daily limit so API spend stays predictable. |
 | **On-page check** | A 0–100 score with a checklist per page (lengths, keyword placement, density, alt text, links). Runs locally, no API cost. Shown in the editor and as a column in post lists. |
@@ -64,6 +66,8 @@ With All in One SEO active, AI titles/descriptions are switched off (it uses pri
 Requires WordPress 6.4+ and PHP 7.4+.
 
 ## Connecting Google Search Console
+
+**If the site runs Site Kit by Google**, nothing needs setting up: Sox SEO uses the Google sign-in Site Kit already holds, and the settings page shows "Connected through Site Kit". The steps below are only for sites without Site Kit.
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a project and enable the **Google Search Console API**.
 2. Create a **service account** in that project and download its **JSON key**.
