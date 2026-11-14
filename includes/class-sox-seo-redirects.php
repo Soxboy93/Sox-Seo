@@ -117,8 +117,7 @@ class Sox_SEO_Redirects {
 			return;
 		}
 		$url = esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) );
-		// Missing assets and probes for files are noise, not lost pages.
-		if ( preg_match( '#\.(?:php|js|css|map|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|xml|txt|env|json)(?:\?|$)#i', $url ) ) {
+		if ( self::is_noise( $url ) ) {
 			return;
 		}
 		$url      = mb_substr( $url, 0, 2000 );
@@ -139,6 +138,44 @@ class Sox_SEO_Redirects {
 		if ( 1 === wp_rand( 1, 50 ) ) {
 			$wpdb->query( 'DELETE FROM ' . self::table_404() . ' WHERE id NOT IN ( SELECT id FROM ( SELECT id FROM ' . self::table_404() . ' ORDER BY last_hit DESC LIMIT 1000 ) keep )' ); // phpcs:ignore WordPress.DB
 		}
+	}
+
+	/**
+	 * Whether a missing URL is a bot probing for weaknesses or a missing
+	 * asset, as opposed to a page a visitor or search engine wanted.
+	 *
+	 * @param string $url Request URI.
+	 * @return bool
+	 */
+	public static function is_noise( $url ) {
+		$path = (string) wp_parse_url( $url, PHP_URL_PATH );
+		// Hidden files and folders: /.git/config, /.env.backup, /.aws/credentials.
+		if ( preg_match( '#(^|/)\.[^/]#', $path ) ) {
+			return true;
+		}
+		// Files, not pages.
+		if ( preg_match( '#\.(?:php\d?|aspx?|jsp|cgi|js|css|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot|xml|rss|txt|json|ya?ml|sql|bak|old|zip|gz|tar|rar|log|ini|conf|env)$#i', $path ) ) {
+			return true;
+		}
+		// Admin panels and APIs of software this site does not run.
+		return (bool) preg_match( '#^/(?:wp-admin|wp-includes|wp-content|wp-json|cgi-bin|api|admin|administrator|phpmyadmin|pma|vendor|actuator|_profiler|debug|console|server-status|owa|autodiscover|telescope|solr|druid)(?:/|$)#i', $path );
+	}
+
+	/**
+	 * Remove bot probes and missing-asset entries from the 404 log.
+	 *
+	 * @return int Rows removed.
+	 */
+	public static function prune_noise() {
+		global $wpdb;
+		$removed = 0;
+		foreach ( $wpdb->get_results( 'SELECT id, url FROM ' . self::table_404() ) as $row ) { // phpcs:ignore WordPress.DB
+			if ( self::is_noise( $row->url ) ) {
+				$wpdb->delete( self::table_404(), array( 'id' => (int) $row->id ), array( '%d' ) ); // phpcs:ignore WordPress.DB
+				$removed++;
+			}
+		}
+		return $removed;
 	}
 
 	/**

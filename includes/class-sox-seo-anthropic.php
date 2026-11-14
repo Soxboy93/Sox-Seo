@@ -184,24 +184,64 @@ class Sox_SEO_Anthropic {
 	 * @param array $message API response.
 	 */
 	private static function record_usage( array $message ) {
+		global $wpdb;
 		if ( empty( $message['usage'] ) ) {
 			return;
 		}
-		$usage = get_option( self::USAGE_OPTION, array() );
-		$usage = is_array( $usage ) ? $usage : array();
-		$month = gmdate( 'Y-m' );
-		if ( ! isset( $usage[ $month ] ) ) {
-			$usage[ $month ] = array(
-				'requests' => 0,
-				'input'    => 0,
-				'output'   => 0,
+		// One counter per row, added to in a single statement: several
+		// bulk workers can finish at the same moment without losing counts.
+		$add = array(
+			'r' => 1,
+			'i' => isset( $message['usage']['input_tokens'] ) ? (int) $message['usage']['input_tokens'] : 0,
+			'o' => isset( $message['usage']['output_tokens'] ) ? (int) $message['usage']['output_tokens'] : 0,
+		);
+		foreach ( $add as $suffix => $amount ) {
+			$name = 'sox_seo_u_' . gmdate( 'Ym' ) . '_' . $suffix;
+			$wpdb->query( // phpcs:ignore WordPress.DB
+				$wpdb->prepare(
+					"INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %d, 'no') ON DUPLICATE KEY UPDATE option_value = option_value + %d", // phpcs:ignore WordPress.DB
+					$name,
+					$amount,
+					$amount
+				)
+			);
+			wp_cache_delete( $name, 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
+		}
+	}
+
+	/**
+	 * Requests and tokens used per month, newest first.
+	 *
+	 * @return array<string,array{requests:int,input:int,output:int}> Keyed by YYYY-MM.
+	 */
+	public static function usage() {
+		$out = array();
+		// Counts recorded before the per-row counters existed.
+		$legacy = get_option( self::USAGE_OPTION, array() );
+		foreach ( is_array( $legacy ) ? $legacy : array() as $month => $row ) {
+			$out[ $month ] = array(
+				'requests' => (int) $row['requests'],
+				'input'    => (int) $row['input'],
+				'output'   => (int) $row['output'],
 			);
 		}
-		$usage[ $month ]['requests']++;
-		$usage[ $month ]['input']  += isset( $message['usage']['input_tokens'] ) ? (int) $message['usage']['input_tokens'] : 0;
-		$usage[ $month ]['output'] += isset( $message['usage']['output_tokens'] ) ? (int) $message['usage']['output_tokens'] : 0;
-		$usage                      = array_slice( $usage, -6, null, true );
-		update_option( self::USAGE_OPTION, $usage, false );
+		for ( $back = 0; $back < 6; $back++ ) {
+			$time  = strtotime( gmdate( 'Y-m-01' ) . " -{$back} months" );
+			$month = gmdate( 'Y-m', $time );
+			$r     = (int) get_option( 'sox_seo_u_' . gmdate( 'Ym', $time ) . '_r', 0 );
+			if ( ! $r ) {
+				continue;
+			}
+			$base          = isset( $out[ $month ] ) ? $out[ $month ] : array( 'requests' => 0, 'input' => 0, 'output' => 0 );
+			$out[ $month ] = array(
+				'requests' => $base['requests'] + $r,
+				'input'    => $base['input'] + (int) get_option( 'sox_seo_u_' . gmdate( 'Ym', $time ) . '_i', 0 ),
+				'output'   => $base['output'] + (int) get_option( 'sox_seo_u_' . gmdate( 'Ym', $time ) . '_o', 0 ),
+			);
+		}
+		krsort( $out );
+		return $out;
 	}
 
 	/**

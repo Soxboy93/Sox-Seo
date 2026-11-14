@@ -47,9 +47,10 @@ class Sox_SEO_Admin_Pages {
 
 	public static function page_search() {
 		echo '<div class="wrap sox-seo"><h1>' . esc_html__( 'Search Performance', 'sox-seo' ) . '</h1>';
+		Sox_SEO_GSC::discover_site_kit();
 		if ( ! Sox_SEO_GSC::is_connected() ) {
 			echo '<p>' . esc_html__( 'Connect Google Search Console to see which pages are close to ranking higher and what people search to find them.', 'sox-seo' ) . '</p>';
-			echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'admin.php?page=sox-seo' ) ) . '">' . esc_html__( 'Connect in settings', 'sox-seo' ) . '</a></p></div>';
+			echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'admin.php?page=sox-seo-settings' ) ) . '">' . esc_html__( 'Connect in settings', 'sox-seo' ) . '</a></p></div>';
 			return;
 		}
 

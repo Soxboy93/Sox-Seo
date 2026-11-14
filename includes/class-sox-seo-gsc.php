@@ -38,7 +38,118 @@ class Sox_SEO_GSC {
 	 * @return bool
 	 */
 	public static function is_connected() {
-		return null !== self::credentials();
+		return '' !== self::source();
+	}
+
+	/**
+	 * Where Search Console data comes from: the site's own service-account
+	 * key, or the Google login that the Site Kit plugin already holds.
+	 *
+	 * @return string key|sitekit|'' (not connected).
+	 */
+	public static function source() {
+		if ( null !== self::credentials() ) {
+			return 'key';
+		}
+		if ( defined( 'GOOGLESITEKIT_PLUGIN_MAIN_FILE' ) && (int) get_option( 'sox_seo_sitekit_user' ) ) {
+			return 'sitekit';
+		}
+		return '';
+	}
+
+	/**
+	 * Look for a Site Kit user whose Google login can read Search Console,
+	 * and remember them. Site Kit keeps one login per administrator, and an
+	 * old one may have expired, so each is tried. Run from admin screens
+	 * only: it is too slow for every page load.
+	 *
+	 * @param bool $force Look again even if a user is already remembered.
+	 * @return int User ID, 0 if none.
+	 */
+	public static function discover_site_kit( $force = false ) {
+		if ( ! defined( 'GOOGLESITEKIT_PLUGIN_MAIN_FILE' ) || ! class_exists( '\\Google\\Site_Kit\\Core\\Authentication\\Authentication' ) ) {
+			delete_option( 'sox_seo_sitekit_user' );
+			return 0;
+		}
+		$known = (int) get_option( 'sox_seo_sitekit_user' );
+		if ( $known && ! $force && get_transient( 'sox_seo_sitekit_checked' ) ) {
+			return $known;
+		}
+		global $wpdb;
+		$found = 0;
+		$ids   = $wpdb->get_col( $wpdb->prepare( "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = %s ORDER BY umeta_id DESC", $wpdb->get_blog_prefix() . 'googlesitekit_access_token' ) ); // phpcs:ignore WordPress.DB
+		foreach ( array_unique( array_map( 'intval', $ids ) ) as $user_id ) {
+			if ( ! user_can( $user_id, 'manage_options' ) ) {
+				continue;
+			}
+			try {
+				$auth = self::site_kit_auth( $user_id );
+				if ( $auth && $auth->is_authenticated() ) {
+					$found = $user_id;
+					break;
+				}
+			} catch ( \Throwable $e ) {
+				continue;
+			}
+		}
+		update_option( 'sox_seo_sitekit_user', $found, false );
+		set_transient( 'sox_seo_sitekit_checked', 1, DAY_IN_SECONDS );
+		return $found;
+	}
+
+	/**
+	 * @param int $user_id User whose Site Kit login to use.
+	 * @return object|null Site Kit's Authentication object.
+	 */
+	private static function site_kit_auth( $user_id ) {
+		$context = new \Google\Site_Kit\Context( GOOGLESITEKIT_PLUGIN_MAIN_FILE );
+		return new \Google\Site_Kit\Core\Authentication\Authentication(
+			$context,
+			new \Google\Site_Kit\Core\Storage\Options( $context ),
+			new \Google\Site_Kit\Core\Storage\User_Options( $context, $user_id )
+		);
+	}
+
+	/**
+	 * Run a Search Analytics query through Site Kit's Google client.
+	 *
+	 * These are Site Kit's internal classes, not a published interface, so
+	 * every failure (including a future Site Kit changing them) is caught
+	 * and reported as an ordinary error.
+	 *
+	 * @param array $body Query body with dates.
+	 * @return array|WP_Error Rows in the REST API's shape.
+	 */
+	private static function site_kit_query( array $body ) {
+		try {
+			$auth = self::site_kit_auth( (int) get_option( 'sox_seo_sitekit_user' ) );
+			if ( ! $auth || ! $auth->is_authenticated() ) {
+				delete_transient( 'sox_seo_sitekit_checked' );
+				return new WP_Error( 'sox_seo_gsc', __( 'Site Kit\'s Google login has expired. Open Site Kit and sign in again, or add a service account key.', 'sox-seo' ) );
+			}
+			$base    = '\\Google\\Site_Kit_Dependencies\\Google\\Service\\SearchConsole';
+			$request = $base . '\\SearchAnalyticsQueryRequest';
+			$service = new $base( $auth->get_oauth_client()->get_client() );
+			$result  = $service->searchanalytics->query( self::property(), new $request( $body ) );
+			$rows    = array();
+			foreach ( (array) $result->getRows() as $row ) {
+				$rows[] = array(
+					'keys'        => (array) $row->getKeys(),
+					'clicks'      => $row->getClicks(),
+					'impressions' => $row->getImpressions(),
+					'ctr'         => $row->getCtr(),
+					'position'    => $row->getPosition(),
+				);
+			}
+			return $rows;
+		} catch ( \Throwable $e ) {
+			$message = $e->getMessage();
+			$decoded = json_decode( $message, true );
+			if ( isset( $decoded['error']['message'] ) ) {
+				$message = $decoded['error']['message'];
+			}
+			return new WP_Error( 'sox_seo_gsc', mb_substr( wp_strip_all_tags( (string) $message ), 0, 300 ) );
+		}
 	}
 
 	/**
@@ -49,7 +160,15 @@ class Sox_SEO_GSC {
 	 */
 	public static function property() {
 		$property = trim( (string) Sox_SEO_Options::get( 'gsc_property' ) );
-		return $property ? $property : home_url( '/' );
+		if ( $property ) {
+			return $property;
+		}
+		// Site Kit knows which property the site is verified as.
+		$site_kit = get_option( 'googlesitekit_search-console_settings' );
+		if ( is_array( $site_kit ) && ! empty( $site_kit['propertyID'] ) ) {
+			return (string) $site_kit['propertyID'];
+		}
+		return home_url( '/' );
 	}
 
 	/**
@@ -135,6 +254,14 @@ class Sox_SEO_GSC {
 		$cached    = $fresh ? false : get_transient( $cache_key );
 		if ( is_array( $cached ) ) {
 			return $cached;
+		}
+
+		if ( 'sitekit' === self::source() ) {
+			$rows = self::site_kit_query( $body );
+			if ( ! is_wp_error( $rows ) ) {
+				set_transient( $cache_key, $rows, 12 * HOUR_IN_SECONDS );
+			}
+			return $rows;
 		}
 
 		$token = self::token();

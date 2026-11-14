@@ -486,7 +486,7 @@ class Sox_SEO_Tools {
 		$lines[] = __( 'CLAUDE THIS WEEK', 'sox-seo' );
 		/* translators: %d: number of pages */
 		$lines[] = sprintf( __( '- Titles and descriptions written: %d', 'sox-seo' ), $written );
-		$usage   = get_option( Sox_SEO_Anthropic::USAGE_OPTION, array() );
+		$usage   = Sox_SEO_Anthropic::usage();
 		$month   = gmdate( 'Y-m' );
 		if ( isset( $usage[ $month ] ) ) {
 			/* translators: 1: requests, 2: input tokens, 3: output tokens */

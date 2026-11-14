@@ -12,6 +12,7 @@ class Sox_SEO_Admin {
 
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'menu' ) );
+		add_action( 'admin_menu', array( __CLASS__, 'menu_settings' ), 30 );
 		add_action( 'admin_init', array( __CLASS__, 'register_settings' ) );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'assets' ) );
 		add_action( 'add_meta_boxes', array( __CLASS__, 'meta_boxes' ) );
@@ -32,10 +33,17 @@ class Sox_SEO_Admin {
 	/* --------------------------------------------------------------------- */
 
 	public static function menu() {
-		add_menu_page( 'Sox SEO', 'Sox SEO', 'manage_options', 'sox-seo', array( __CLASS__, 'page_settings' ), 'dashicons-chart-line', 81 );
-		add_submenu_page( 'sox-seo', __( 'Settings', 'sox-seo' ), __( 'Settings', 'sox-seo' ), 'manage_options', 'sox-seo', array( __CLASS__, 'page_settings' ) );
+		add_menu_page( 'Sox SEO', 'Sox SEO', 'manage_options', 'sox-seo', array( 'Sox_SEO_Dashboard', 'page' ), 'dashicons-chart-line', 81 );
+		add_submenu_page( 'sox-seo', __( 'Dashboard', 'sox-seo' ), __( 'Dashboard', 'sox-seo' ), 'manage_options', 'sox-seo', array( 'Sox_SEO_Dashboard', 'page' ) );
 		add_submenu_page( 'sox-seo', __( 'Bulk AI Optimizer', 'sox-seo' ), __( 'Bulk AI Optimizer', 'sox-seo' ), 'manage_options', 'sox-seo-bulk', array( __CLASS__, 'page_bulk' ) );
 		add_submenu_page( 'sox-seo', __( 'Redirects & 404s', 'sox-seo' ), __( 'Redirects & 404s', 'sox-seo' ), 'manage_options', 'sox-seo-redirects', array( __CLASS__, 'page_redirects' ) );
+	}
+
+	/**
+	 * Settings goes last in the menu, after the report screens.
+	 */
+	public static function menu_settings() {
+		add_submenu_page( 'sox-seo', __( 'Settings', 'sox-seo' ), __( 'Settings', 'sox-seo' ), 'manage_options', 'sox-seo-settings', array( __CLASS__, 'page_settings' ) );
 	}
 
 	/**
@@ -43,7 +51,8 @@ class Sox_SEO_Admin {
 	 * @return string[]
 	 */
 	public static function action_links( $links ) {
-		array_unshift( $links, '<a href="' . esc_url( admin_url( 'admin.php?page=sox-seo' ) ) . '">' . esc_html__( 'Settings', 'sox-seo' ) . '</a>' );
+		array_unshift( $links, '<a href="' . esc_url( admin_url( 'admin.php?page=sox-seo-settings' ) ) . '">' . esc_html__( 'Settings', 'sox-seo' ) . '</a>' );
+		array_unshift( $links, '<a href="' . esc_url( admin_url( 'admin.php?page=sox-seo' ) ) . '">' . esc_html__( 'Dashboard', 'sox-seo' ) . '</a>' );
 		return $links;
 	}
 
@@ -210,10 +219,10 @@ class Sox_SEO_Admin {
 		$native = Sox_SEO_Meta::is_native();
 		$option = Sox_SEO_Options::OPTION;
 		$key    = Sox_SEO_Options::api_key();
-		$usage  = get_option( Sox_SEO_Anthropic::USAGE_OPTION, array() );
+		$usage  = Sox_SEO_Anthropic::usage();
 		?>
-		<div class="wrap sox-seo">
-			<h1>Sox SEO</h1>
+		<div class="wrap sox-seo sox-seo-settings">
+			<h1><?php esc_html_e( 'Settings', 'sox-seo' ); ?></h1>
 			<?php settings_errors( 'sox_seo' ); ?>
 			<form method="post" action="options.php">
 				<?php settings_fields( 'sox_seo' ); ?>
@@ -307,9 +316,15 @@ class Sox_SEO_Admin {
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Service account key', 'sox-seo' ); ?></th>
 						<td>
-							<?php $gsc = Sox_SEO_GSC::credentials(); ?>
+							<?php
+							Sox_SEO_GSC::discover_site_kit();
+							$gsc = Sox_SEO_GSC::credentials();
+							?>
 							<?php if ( $gsc ) : ?>
-								<p><strong><?php esc_html_e( 'Connected as', 'sox-seo' ); ?></strong> <code><?php echo esc_html( $gsc['client_email'] ); ?></code></p>
+								<p><span class="sox-seo-chip sox-seo-chip-good"><?php esc_html_e( 'Connected', 'sox-seo' ); ?></span> <code><?php echo esc_html( $gsc['client_email'] ); ?></code></p>
+							<?php elseif ( 'sitekit' === Sox_SEO_GSC::source() ) : ?>
+								<p><span class="sox-seo-chip sox-seo-chip-good"><?php esc_html_e( 'Connected through Site Kit', 'sox-seo' ); ?></span> <code><?php echo esc_html( Sox_SEO_GSC::property() ); ?></code></p>
+								<p class="description"><?php esc_html_e( 'Sox SEO is using the Google sign-in that Site Kit by Google already holds on this site, so nothing below is needed. A service account key is only worth adding if you ever remove Site Kit.', 'sox-seo' ); ?></p>
 							<?php endif; ?>
 							<textarea class="large-text code" rows="3" name="<?php echo esc_attr( $option ); ?>[gsc_key]" placeholder="<?php echo $gsc ? esc_attr__( 'Paste a new JSON key to replace, or type delete to disconnect', 'sox-seo' ) : '{ "type": "service_account", … }'; ?>"></textarea>
 							<p class="description">
@@ -774,7 +789,10 @@ class Sox_SEO_Admin {
 				</tbody>
 			</table>
 			<?php if ( $missing ) : ?>
-				<p><a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=sox_seo_404_clear' ), 'sox_seo_redirect' ) ); ?>"><?php esc_html_e( 'Clear 404 log', 'sox-seo' ); ?></a></p>
+				<p>
+					<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=sox_seo_prune_404' ), 'sox_seo_redirect' ) ); ?>"><?php esc_html_e( 'Remove bot probes', 'sox-seo' ); ?></a>
+					<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=sox_seo_404_clear' ), 'sox_seo_redirect' ) ); ?>"><?php esc_html_e( 'Clear 404 log', 'sox-seo' ); ?></a>
+				</p>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -876,7 +894,7 @@ class Sox_SEO_Admin {
 				<p class="sox-seo-muted">
 					<?php
 					/* translators: %s: settings link */
-					printf( esc_html__( 'Add an Anthropic API key in %s to use the AI buttons.', 'sox-seo' ), '<a href="' . esc_url( admin_url( 'admin.php?page=sox-seo' ) ) . '">' . esc_html__( 'Sox SEO settings', 'sox-seo' ) . '</a>' );
+					printf( esc_html__( 'Add an Anthropic API key in %s to use the AI buttons.', 'sox-seo' ), '<a href="' . esc_url( admin_url( 'admin.php?page=sox-seo-settings' ) ) . '">' . esc_html__( 'Sox SEO settings', 'sox-seo' ) . '</a>' );
 					?>
 				</p>
 			<?php elseif ( ! $saved ) : ?>
