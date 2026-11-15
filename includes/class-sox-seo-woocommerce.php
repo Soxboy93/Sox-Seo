@@ -17,9 +17,24 @@ class Sox_SEO_WooCommerce {
 			return;
 		}
 		add_filter( 'woocommerce_structured_data_product', array( __CLASS__, 'product_schema' ), 20, 2 );
+		add_action( 'wp_head', array( __CLASS__, 'show_gallery_without_js' ), 5 );
 		if ( Sox_SEO_Meta::is_native() ) {
 			// Just before WooCommerce prints its structured data in the footer.
 			add_action( 'wp_footer', array( __CLASS__, 'ensure_product_schema' ), 9 );
+		}
+	}
+
+	/**
+	 * Show the product photo as soon as it loads.
+	 *
+	 * WooCommerce prints the product gallery invisible and lets its script
+	 * fade it in. On sites that delay scripts until the visitor's first tap
+	 * or scroll (a common speed setting), the main photo, usually the largest
+	 * thing on the page, would stay hidden until then.
+	 */
+	public static function show_gallery_without_js() {
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			echo "<style id=\"sox-seo-gallery\">.woocommerce-product-gallery{opacity:1!important}</style>\n";
 		}
 	}
 
