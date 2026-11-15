@@ -3,7 +3,7 @@
  * Plugin Name:       Sox SEO
  * Plugin URI:        https://github.com/soxboy93/sox-seo
  * Description:       AI-powered SEO for WordPress and WooCommerce. Uses Claude (Anthropic API) to write titles, meta descriptions, image alt text and internal links, and ships the technical SEO layer: meta tags, Open Graph, schema, sitemap tuning, redirects and 404 monitoring. Works standalone or as an AI layer on top of Rank Math, Yoast SEO or SEOPress.
- * Version:           1.3.0
+ * Version:           1.3.1
  * Requires at least: 6.4
  * Requires PHP:      7.4
  * Author:            Sox
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'SOX_SEO_VERSION', '1.3.0' );
+define( 'SOX_SEO_VERSION', '1.3.1' );
 define( 'SOX_SEO_FILE', __FILE__ );
 define( 'SOX_SEO_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOX_SEO_URL', plugin_dir_url( __FILE__ ) );

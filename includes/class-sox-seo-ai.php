@@ -73,7 +73,7 @@ class Sox_SEO_AI {
 	 * @param string[] $parts    Collected HTML fragments.
 	 */
 	private static function collect_elementor_text( array $elements, array &$parts ) {
-		$text_keys = array( 'title', 'editor', 'html', 'text', 'description_text', 'title_text', 'caption', 'content', 'button_text', 'tab_title', 'tab_content', 'testimonial_content', 'shortcode' );
+		$text_keys = array( 'title', 'editor', 'html', 'text', 'description_text', 'title_text', 'caption', 'content', 'button_text', 'button', 'tab_title', 'tab_content', 'testimonial_content', 'shortcode' );
 		foreach ( $elements as $element ) {
 			if ( ! is_array( $element ) ) {
 				continue;
@@ -91,6 +91,7 @@ class Sox_SEO_AI {
 					}
 					$parts[] = $value;
 				}
+				self::collect_elementor_media( $element['widgetType'], $settings, $parts );
 				// Repeaters: tabs, accordions, icon lists, FAQs.
 				foreach ( $settings as $setting ) {
 					if ( is_array( $setting ) && isset( $setting[0] ) && is_array( $setting[0] ) ) {
@@ -106,6 +107,38 @@ class Sox_SEO_AI {
 			}
 			if ( ! empty( $element['elements'] ) && is_array( $element['elements'] ) ) {
 				self::collect_elementor_text( $element['elements'], $parts );
+			}
+		}
+	}
+
+	/**
+	 * Pictures, videos and links that Elementor widgets keep in their settings
+	 * instead of in text, written out as the tags the page will print.
+	 *
+	 * @param string   $type     Widget type.
+	 * @param array    $settings Widget settings.
+	 * @param string[] $parts    Collected HTML fragments.
+	 */
+	private static function collect_elementor_media( $type, array $settings, array &$parts ) {
+		if ( 'image' === $type && ! empty( $settings['image']['url'] ) ) {
+			$alt = '';
+			if ( ! empty( $settings['image']['id'] ) ) {
+				$alt = (string) get_post_meta( (int) $settings['image']['id'], '_wp_attachment_image_alt', true );
+			}
+			$parts[] = '<img src="' . esc_url( $settings['image']['url'] ) . '" alt="' . esc_attr( $alt ) . '">';
+		}
+		if ( 'video' === $type ) {
+			// Elementor keeps a sample address for every video service; only
+			// the chosen service's address is the one shown.
+			$key = ( isset( $settings['video_type'] ) && is_string( $settings['video_type'] ) ? $settings['video_type'] : 'youtube' ) . '_url';
+			if ( ! empty( $settings[ $key ] ) && is_string( $settings[ $key ] ) ) {
+				$parts[] = '<iframe src="' . esc_url( $settings[ $key ] ) . '"></iframe>';
+			}
+		}
+		// Buttons, linked images and call-to-action boxes.
+		foreach ( array( 'link', 'link_to_url', 'button_link' ) as $key ) {
+			if ( ! empty( $settings[ $key ]['url'] ) && is_string( $settings[ $key ]['url'] ) ) {
+				$parts[] = '<a href="' . esc_url( $settings[ $key ]['url'] ) . '"></a>';
 			}
 		}
 	}

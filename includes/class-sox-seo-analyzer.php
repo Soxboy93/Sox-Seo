@@ -153,9 +153,21 @@ class Sox_SEO_Analyzer {
 			}
 		}
 
+		// The shop page and the blog page show a list of products or posts
+		// under whatever introduction they have. The list supplies the
+		// pictures, links and length, so those are not asked of the intro.
+		$listing = self::is_listing_page( $post_id );
+
 		// Content length. Products are judged more leniently than articles.
 		$minimum = 'product' === $post->post_type ? 100 : 300;
-		if ( $words >= $minimum ) {
+		if ( $listing ) {
+			if ( $words ) {
+				/* translators: %d: word count */
+				$add( 'good', sprintf( __( 'The list has a %d-word introduction.', 'sox-seo' ), $words ) );
+			} else {
+				$add( 'ok', __( 'The list has no introduction. Add a sentence or two saying what is sold here.', 'sox-seo' ) );
+			}
+		} elseif ( $words >= $minimum ) {
 			/* translators: %d: word count */
 			$add( 'good', sprintf( __( 'Content is %d words long.', 'sox-seo' ), $words ) );
 		} else {
@@ -177,7 +189,7 @@ class Sox_SEO_Analyzer {
 			} else {
 				$add( 'good', __( 'All images in the content have alt text.', 'sox-seo' ) );
 			}
-		} elseif ( ! has_post_thumbnail( $post ) ) {
+		} elseif ( ! $listing && ! has_post_thumbnail( $post ) && ! preg_match( '#<(?:iframe|video)\b#i', $html ) ) {
 			$add( 'ok', __( 'No images and no featured image.', 'sox-seo' ) );
 		}
 
@@ -199,7 +211,7 @@ class Sox_SEO_Analyzer {
 		}
 		// A product page links onward through its category, related products
 		// and the menu, so links inside the description are not expected.
-		if ( 'product' !== $post->post_type || $internal ) {
+		if ( ( 'product' !== $post->post_type && ! $listing ) || $internal ) {
 			$add(
 				$internal ? 'good' : 'ok',
 				/* translators: %d: number of links */
@@ -253,13 +265,50 @@ class Sox_SEO_Analyzer {
 		if ( '' === $needle ) {
 			return false;
 		}
-		$words = array_flip( explode( ' ', self::normalize( $haystack ) ) );
+		$words = array_flip( array_map( array( __CLASS__, 'singular' ), explode( ' ', self::normalize( $haystack ) ) ) );
 		foreach ( explode( ' ', $needle ) as $word ) {
-			if ( ! isset( $words[ $word ] ) ) {
+			if ( ! isset( $words[ self::singular( $word ) ] ) ) {
 				return false;
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * English plural reduced to its singular, so "pools" covers the keyword
+	 * "pool" as it does for a search engine. Other words are left alone.
+	 *
+	 * @param string $word Lower-case word.
+	 * @return string
+	 */
+	private static function singular( $word ) {
+		if ( strlen( $word ) < 4 || ! preg_match( '/^[a-z]+$/', $word ) ) {
+			return $word;
+		}
+		if ( 'ies' === substr( $word, -3 ) ) {
+			return substr( $word, 0, -3 ) . 'y';
+		}
+		if ( preg_match( '/(?:ss|x|z|ch|sh)es$/', $word ) ) {
+			return substr( $word, 0, -2 );
+		}
+		if ( 's' === substr( $word, -1 ) && ! preg_match( '/(?:ss|us|is)$/', $word ) ) {
+			return substr( $word, 0, -1 );
+		}
+		return $word;
+	}
+
+	/**
+	 * Whether a page is the WooCommerce shop page or the blog page.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return bool
+	 */
+	private static function is_listing_page( $post_id ) {
+		$post_id = (int) $post_id;
+		if ( function_exists( 'wc_get_page_id' ) && (int) wc_get_page_id( 'shop' ) === $post_id ) {
+			return true;
+		}
+		return 'page' === get_option( 'show_on_front' ) && (int) get_option( 'page_for_posts' ) === $post_id;
 	}
 
 	/**
